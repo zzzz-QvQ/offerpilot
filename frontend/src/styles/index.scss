@@ -1,0 +1,27 @@
+﻿@use './reset.scss';
+@use './variables.scss';
+
+#app {
+  min-height: 100vh;
+}
+
+body {
+  background: var(--color-page-bg);
+  color: var(--color-text-primary);
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.page-shell {
+  min-height: calc(100vh - 112px);
+}
+
+.page-shell--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder-card {
+  width: 100%;
+  max-width: 960px;
+}
