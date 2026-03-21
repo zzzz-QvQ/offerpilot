@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,17 +60,35 @@ type ReviewReportResponse struct {
 	SuggestionItems []ReviewSuggestionItem `json:"suggestionItems"`
 }
 
+type reviewLLMResult struct {
+	OverallSummary string   `json:"overallSummary"`
+	OverallScore   int      `json:"overallScore"`
+	Technical      int      `json:"technical"`
+	Expression     int      `json:"expression"`
+	Logic          int      `json:"logic"`
+	Depth          int      `json:"depth"`
+	Project        int      `json:"project"`
+	WeakPoints     []string `json:"weakPoints"`
+	Suggestions    []string `json:"suggestions"`
+}
+
 type ReviewService interface {
 	GetReport(userID, sessionID uint64) (*ReviewReportResponse, error)
 	GetHistory(userID uint64) ([]ReviewHistoryItem, error)
 }
 
 type reviewService struct {
-	reviewRepo repository.ReviewRepository
+	reviewRepo        repository.ReviewRepository
+	llmService        LLMService
+	questionRetrieval QuestionRetrievalService
 }
 
-func NewReviewService(reviewRepo repository.ReviewRepository) ReviewService {
-	return &reviewService{reviewRepo: reviewRepo}
+func NewReviewService(reviewRepo repository.ReviewRepository, llmService LLMService, questionRetrieval QuestionRetrievalService) ReviewService {
+	return &reviewService{
+		reviewRepo:        reviewRepo,
+		llmService:        llmService,
+		questionRetrieval: questionRetrieval,
+	}
 }
 
 func (s *reviewService) GetReport(userID, sessionID uint64) (*ReviewReportResponse, error) {
@@ -89,7 +108,7 @@ func (s *reviewService) GetReport(userID, sessionID uint64) (*ReviewReportRespon
 		return nil, err
 	}
 
-	return s.buildPlaceholderReport(session, messages), nil
+	return s.buildLLMReport(session, messages)
 }
 
 func (s *reviewService) GetHistory(userID uint64) ([]ReviewHistoryItem, error) {
@@ -100,7 +119,7 @@ func (s *reviewService) GetHistory(userID uint64) ([]ReviewHistoryItem, error) {
 
 	result := make([]ReviewHistoryItem, 0, len(items))
 	for _, item := range items {
-		finishedAt := "未结束"
+		finishedAt := "Not finished"
 		if item.EndedAt != nil && *item.EndedAt > 0 {
 			finishedAt = time.UnixMilli(*item.EndedAt).Format("2006-01-02 15:04")
 		}
@@ -119,92 +138,138 @@ func (s *reviewService) fromPersistedReport(report *model.ReviewReport) *ReviewR
 	weakPoints := splitLines(report.WeakPoints)
 	suggestions := splitLines(report.Suggestions)
 
-	response := &ReviewReportResponse{
+	return &ReviewReportResponse{
 		OverallScore: report.OverallScore,
 		SummaryItems: []ReviewSummaryItem{
-			{Label: "总体评分", Value: fmt.Sprintf("%d 分", report.OverallScore), Hint: "基于当前复盘记录生成"},
-			{Label: "技术得分", Value: fmt.Sprintf("%d 分", report.TechnicalScore), Hint: "技术准确性与广度"},
-			{Label: "表达得分", Value: fmt.Sprintf("%d 分", report.ExpressionScore), Hint: "表达与沟通清晰度"},
+			{Label: "Overall Score", Value: fmt.Sprintf("%d", report.OverallScore), Hint: "Generated from stored review report"},
+			{Label: "Technical", Value: fmt.Sprintf("%d", report.TechnicalScore), Hint: "Technical accuracy and depth"},
+			{Label: "Expression", Value: fmt.Sprintf("%d", report.ExpressionScore), Hint: "Clarity and communication"},
 		},
 		RadarItems: []ReviewRadarItem{
-			{Name: "知识准确性", Score: report.TechnicalScore, FullMark: 100},
-			{Name: "表达完整度", Score: report.ExpressionScore, FullMark: 100},
-			{Name: "结构清晰度", Score: report.LogicScore, FullMark: 100},
-			{Name: "追问应对", Score: report.DepthScore, FullMark: 100},
-			{Name: "项目结合度", Score: report.ProjectScore, FullMark: 100},
+			{Name: "technical", Score: report.TechnicalScore, FullMark: 100},
+			{Name: "expression", Score: report.ExpressionScore, FullMark: 100},
+			{Name: "logic", Score: report.LogicScore, FullMark: 100},
+			{Name: "depth", Score: report.DepthScore, FullMark: 100},
+			{Name: "project", Score: report.ProjectScore, FullMark: 100},
 		},
 		WeaknessItems:   makeWeaknessItems(weakPoints),
 		TrendItems:      makeTrendItems(report.OverallScore),
 		SuggestionItems: makeSuggestionItems(suggestions, weakPoints),
 	}
-
-	return response
 }
 
-func (s *reviewService) buildPlaceholderReport(session *model.InterviewSession, messages []model.InterviewMessage) *ReviewReportResponse {
-	candidateCount := 0
+func (s *reviewService) buildLLMReport(session *model.InterviewSession, messages []model.InterviewMessage) (*ReviewReportResponse, error) {
+	referenceContext, _ := s.buildReferenceContext(context.Background(), session, messages)
+	conversation := s.formatMessages(messages)
+
+	response, err := s.llmService.GenerateText(context.Background(), GenerateTextRequest{
+		SystemPrompt: buildReviewAnalysisSystemPrompt(),
+		Messages: []LLMMessage{{
+			Role:    "user",
+			Content: buildReviewAnalysisUserPrompt(session.Mode, session.JobRole, conversation, referenceContext),
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var generated reviewLLMResult
+	if err := unmarshalLooseJSON(response.Content, &generated); err != nil {
+		return nil, err
+	}
+
+	technical := reviewClampScore(generated.Technical)
+	expression := reviewClampScore(generated.Expression)
+	logic := reviewClampScore(generated.Logic)
+	depth := reviewClampScore(generated.Depth)
+	project := reviewClampScore(generated.Project)
+	overall := reviewClampScore(generated.OverallScore)
+	if overall == 0 {
+		overall = reviewClampScore((technical + expression + logic + depth + project) / 5)
+	}
+
+	weakPoints := trimLines(generated.WeakPoints)
+	suggestions := trimLines(generated.Suggestions)
+
+	return &ReviewReportResponse{
+		OverallScore: overall,
+		SummaryItems: []ReviewSummaryItem{
+			{Label: "Overall Score", Value: fmt.Sprintf("%d", overall), Hint: strings.TrimSpace(generated.OverallSummary)},
+			{Label: "Interview Mode", Value: session.Mode, Hint: "Session metadata"},
+			{Label: "Target Role", Value: session.JobRole, Hint: "Session metadata"},
+		},
+		RadarItems: []ReviewRadarItem{
+			{Name: "technical", Score: technical, FullMark: 100},
+			{Name: "expression", Score: expression, FullMark: 100},
+			{Name: "logic", Score: logic, FullMark: 100},
+			{Name: "depth", Score: depth, FullMark: 100},
+			{Name: "project", Score: project, FullMark: 100},
+		},
+		WeaknessItems:   makeWeaknessItems(weakPoints),
+		TrendItems:      makeTrendItems(overall),
+		SuggestionItems: makeSuggestionItems(suggestions, weakPoints),
+	}, nil
+}
+
+func (s *reviewService) buildReferenceContext(ctx context.Context, session *model.InterviewSession, messages []model.InterviewMessage) (string, error) {
+	if s.questionRetrieval == nil {
+		return "", nil
+	}
+
+	queryParts := []string{session.JobRole, session.Mode}
 	for _, message := range messages {
-		if message.Role == "candidate" {
-			candidateCount++
+		if message.Role == "candidate" || message.Role == "interviewer" {
+			queryParts = append(queryParts, message.Content)
 		}
 	}
 
-	overallScore := 72 + min(candidateCount*3, 18)
-	technical := clamp(overallScore+2, 0, 100)
-	expression := clamp(overallScore-1, 0, 100)
-	logic := clamp(overallScore-3, 0, 100)
-	depth := clamp(overallScore-5, 0, 100)
-	project := clamp(overallScore+4, 0, 100)
-
-	weakPoints := []string{
-		"性能优化回答仍偏抽象，建议补充真实优化指标。",
-		"追问时的结构化表达还不够稳定。",
+	hits, err := s.questionRetrieval.SearchQuestions(ctx, strings.Join(queryParts, "\n"), 3)
+	if err != nil {
+		if isRetrievalUnavailable(err) {
+			return "", nil
+		}
+		return "", err
 	}
-	suggestions := []string{
-		"建议增加多轮追问训练，重点强化技术决策解释。",
-		"复盘时补充项目结果和量化收益，提高说服力。",
+	if len(hits) == 0 {
+		return "", nil
 	}
 
-	return &ReviewReportResponse{
-		OverallScore: overallScore,
-		SummaryItems: []ReviewSummaryItem{
-			{Label: "总体评分", Value: fmt.Sprintf("%d 分", overallScore), Hint: "基于当前会话占位分析"},
-			{Label: "面试模式", Value: session.Mode, Hint: "当前复盘来源会话模式"},
-			{Label: "目标岗位", Value: session.JobRole, Hint: "当前复盘来源岗位方向"},
-		},
-		RadarItems: []ReviewRadarItem{
-			{Name: "知识准确性", Score: technical, FullMark: 100},
-			{Name: "表达完整度", Score: expression, FullMark: 100},
-			{Name: "结构清晰度", Score: logic, FullMark: 100},
-			{Name: "追问应对", Score: depth, FullMark: 100},
-			{Name: "项目结合度", Score: project, FullMark: 100},
-		},
-		WeaknessItems:   makeWeaknessItems(weakPoints),
-		TrendItems:      makeTrendItems(overallScore),
-		SuggestionItems: makeSuggestionItems(suggestions, weakPoints),
+	parts := make([]string, 0, len(hits))
+	for idx, hit := range hits {
+		parts = append(parts, fmt.Sprintf("[%d] %s | %s\n%s", idx+1, hit.Title, hit.Category, hit.Text))
 	}
+	return strings.Join(parts, "\n\n"), nil
+}
+
+func (s *reviewService) formatMessages(messages []model.InterviewMessage) string {
+	lines := make([]string, 0, len(messages))
+	for _, message := range messages {
+		role := strings.Title(message.Role)
+		lines = append(lines, fmt.Sprintf("%s: %s", role, strings.TrimSpace(message.Content)))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func makeWeaknessItems(items []string) []ReviewWeaknessItem {
 	result := make([]ReviewWeaknessItem, 0, len(items))
 	for idx, item := range items {
 		result = append(result, ReviewWeaknessItem{
-			Name:  shorten(item, 12),
+			Name:  shorten(item, 24),
 			Score: 60 + idx*8,
 		})
 	}
 	if len(result) == 0 {
-		return []ReviewWeaknessItem{{Name: "暂无薄弱点", Score: 80}}
+		return []ReviewWeaknessItem{{Name: "No obvious weak point", Score: 80}}
 	}
 	return result
 }
 
 func makeTrendItems(overall int) []ReviewTrendItem {
 	return []ReviewTrendItem{
-		{Date: "03-16", Score: clamp(overall-8, 0, 100)},
-		{Date: "03-17", Score: clamp(overall-5, 0, 100)},
-		{Date: "03-18", Score: clamp(overall-3, 0, 100)},
-		{Date: "03-19", Score: clamp(overall-2, 0, 100)},
+		{Date: "03-16", Score: reviewClampScore(overall - 8)},
+		{Date: "03-17", Score: reviewClampScore(overall - 5)},
+		{Date: "03-18", Score: reviewClampScore(overall - 3)},
+		{Date: "03-19", Score: reviewClampScore(overall - 2)},
 		{Date: "03-20", Score: overall},
 	}
 }
@@ -212,10 +277,10 @@ func makeTrendItems(overall int) []ReviewTrendItem {
 func makeSuggestionItems(suggestions, weakPoints []string) []ReviewSuggestionItem {
 	result := make([]ReviewSuggestionItem, 0, len(suggestions)+len(weakPoints))
 	for _, item := range suggestions {
-		result = append(result, ReviewSuggestionItem{Title: shorten(item, 18), Description: item, Type: "建议"})
+		result = append(result, ReviewSuggestionItem{Title: shorten(item, 24), Description: item, Type: "suggestion"})
 	}
 	for _, item := range weakPoints {
-		result = append(result, ReviewSuggestionItem{Title: shorten(item, 18), Description: item, Type: "薄弱点"})
+		result = append(result, ReviewSuggestionItem{Title: shorten(item, 24), Description: item, Type: "weakness"})
 	}
 	return result
 }
@@ -225,7 +290,18 @@ func splitLines(text string) []string {
 	parts := strings.Split(text, "\n")
 	result := make([]string, 0, len(parts))
 	for _, part := range parts {
-		trimmed := strings.TrimSpace(strings.TrimLeft(part, "-•0123456789.、 "))
+		trimmed := strings.TrimSpace(strings.TrimLeft(part, "-• 0123456789.、"))
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func trimLines(items []string) []string {
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
 		if trimmed != "" {
 			result = append(result, trimmed)
 		}
@@ -241,21 +317,14 @@ func shorten(text string, maxLen int) string {
 	return string(runes[:maxLen]) + "..."
 }
 
-func clamp(value, minValue, maxValue int) int {
-	if value < minValue {
-		return minValue
+func reviewClampScore(value int) int {
+	if value < 0 {
+		return 0
 	}
-	if value > maxValue {
-		return maxValue
+	if value > 100 {
+		return 100
 	}
 	return value
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func init() {

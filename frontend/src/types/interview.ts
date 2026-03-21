@@ -34,10 +34,12 @@ export interface InterviewScoreItem {
   score: number;
 }
 
-export interface KnowledgeHitItem {
-  name: string;
-  level: KnowledgeHitLevel;
-  summary: string;
+export interface KnowledgeReferenceItem {
+  questionId: string;
+  title: string;
+  category: string;
+  score: number;
+  snippet: string;
 }
 
 export interface InterviewSessionDetail {
@@ -47,7 +49,7 @@ export interface InterviewSessionDetail {
   messages: InterviewMessageItem[];
   statusItems: InterviewStatusItem[];
   scoreItems: InterviewScoreItem[];
-  knowledgeHits: KnowledgeHitItem[];
+  knowledgeHits: KnowledgeReferenceItem[];
   agentStage?: InterviewAgentStage;
 }
 
@@ -75,8 +77,19 @@ export interface StateEventPayload {
   agentStage?: InterviewAgentStage;
 }
 
+export interface RawKnowledgeReferencePayloadItem {
+  questionId?: string;
+  title?: string;
+  category?: string;
+  score?: number;
+  snippet?: string;
+  name?: string;
+  summary?: string;
+  level?: KnowledgeHitLevel;
+}
+
 export interface ReferenceEventPayload {
-  knowledgeHits?: KnowledgeHitItem[];
+  knowledgeHits?: RawKnowledgeReferencePayloadItem[];
 }
 
 export interface DoneEventPayload {
@@ -84,7 +97,7 @@ export interface DoneEventPayload {
   questions?: InterviewQuestionItem[];
   statusItems?: InterviewStatusItem[];
   scoreItems?: InterviewScoreItem[];
-  knowledgeHits?: KnowledgeHitItem[];
+  knowledgeHits?: RawKnowledgeReferencePayloadItem[];
   agentStage?: InterviewAgentStage;
   message?: InterviewMessageItem;
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"offerpilot/backend/internal/model"
+	"offerpilot/backend/internal/pkg/vectorstore"
 	"offerpilot/backend/internal/repository"
 	"strconv"
 	"strings"
@@ -46,9 +47,11 @@ type InterviewScoreItem struct {
 }
 
 type KnowledgeHitItem struct {
-	Name    string `json:"name"`
-	Level   string `json:"level"`
-	Summary string `json:"summary"`
+	QuestionID string  `json:"questionId"`
+	Title      string  `json:"title"`
+	Category   string  `json:"category"`
+	Score      float64 `json:"score"`
+	Snippet    string  `json:"snippet"`
 }
 
 type InterviewSessionDetail struct {
@@ -71,12 +74,7 @@ type SubmitInterviewMessageRequest struct {
 }
 
 type SubmitInterviewMessageResponse struct {
-	Message           InterviewMessageItem    `json:"message"`
-	CurrentQuestionID string                  `json:"currentQuestionId"`
-	Questions         []InterviewQuestionItem `json:"questions"`
-	StatusItems       []InterviewStatusItem   `json:"statusItems"`
-	ScoreItems        []InterviewScoreItem    `json:"scoreItems"`
-	KnowledgeHits     []KnowledgeHitItem      `json:"knowledgeHits"`
+	Accepted bool `json:"accepted"`
 }
 
 type StateEventPayload struct {
@@ -115,23 +113,46 @@ type InterviewService interface {
 	FinishSession(userID, sessionID uint64) error
 }
 
-type interviewService struct {
-	interviewRepo repository.InterviewRepository
+type interviewEvaluationResult struct {
+	Summary         string `json:"summary"`
+	FollowupFocus   string `json:"followupFocus"`
+	ExpressionScore int    `json:"expressionScore"`
+	AccuracyScore   int    `json:"accuracyScore"`
+	StructureScore  int    `json:"structureScore"`
 }
 
-func NewInterviewService(interviewRepo repository.InterviewRepository) InterviewService {
-	return &interviewService{interviewRepo: interviewRepo}
+type interviewService struct {
+	interviewRepo     repository.InterviewRepository
+	llmService        LLMService
+	questionRetrieval QuestionRetrievalService
+}
+
+func NewInterviewService(
+	interviewRepo repository.InterviewRepository,
+	llmService LLMService,
+	questionRetrieval QuestionRetrievalService,
+) InterviewService {
+	return &interviewService{
+		interviewRepo:     interviewRepo,
+		llmService:        llmService,
+		questionRetrieval: questionRetrieval,
+	}
 }
 
 func (s *interviewService) CreateSession(userID uint64, req CreateInterviewSessionRequest) (*CreateInterviewSessionResponse, error) {
-	mode := req.Mode
+	mode := strings.TrimSpace(req.Mode)
 	if mode == "" {
 		mode = "general"
 	}
 
-	jobRole := req.JobRole
+	jobRole := strings.TrimSpace(req.JobRole)
 	if jobRole == "" {
 		jobRole = "frontend engineer"
+	}
+
+	firstQuestion, err := s.generateInitialQuestion(context.Background(), mode, jobRole)
+	if err != nil {
+		return nil, err
 	}
 
 	session := &model.InterviewSession{
@@ -146,14 +167,13 @@ func (s *interviewService) CreateSession(userID uint64, req CreateInterviewSessi
 		return nil, err
 	}
 
-	firstQuestion := s.buildInitialQuestion(mode, jobRole)
 	message := &model.InterviewMessage{
 		SessionID:     session.ID,
 		Role:          "interviewer",
 		RoundNo:       1,
 		QuestionID:    "q-1",
 		Content:       firstQuestion,
-		ScoreSnapshot: s.mustMarshalScoreSnapshot(78, 80, 76),
+		ScoreSnapshot: s.mustMarshalScoreSnapshot(0, 0, 0),
 	}
 	if err := s.interviewRepo.CreateMessage(message); err != nil {
 		return nil, err
@@ -194,51 +214,23 @@ func (s *interviewService) SubmitMessage(userID, sessionID uint64, req SubmitInt
 	if err != nil {
 		return nil, err
 	}
+	if latestRound <= 0 {
+		latestRound = 1
+	}
 
 	candidateMessage := &model.InterviewMessage{
 		SessionID:     session.ID,
 		Role:          "candidate",
 		RoundNo:       latestRound,
 		QuestionID:    fmt.Sprintf("q-%d", latestRound),
-		Content:       req.Content,
-		ScoreSnapshot: s.mustMarshalScoreSnapshot(80, 79, 78),
+		Content:       strings.TrimSpace(req.Content),
+		ScoreSnapshot: s.mustMarshalScoreSnapshot(0, 0, 0),
 	}
 	if err := s.interviewRepo.CreateMessage(candidateMessage); err != nil {
 		return nil, err
 	}
 
-	nextRound := latestRound + 1
-	interviewerReply := &model.InterviewMessage{
-		SessionID:     session.ID,
-		Role:          "interviewer",
-		RoundNo:       nextRound,
-		QuestionID:    fmt.Sprintf("q-%d", nextRound),
-		Content:       s.buildFollowupQuestion(req.Content, nextRound),
-		ScoreSnapshot: s.mustMarshalScoreSnapshot(82, 81, 80),
-	}
-	if err := s.interviewRepo.CreateMessage(interviewerReply); err != nil {
-		return nil, err
-	}
-
-	session.TotalRounds = nextRound
-	if err := s.interviewRepo.UpdateSession(session); err != nil {
-		return nil, err
-	}
-
-	messages, err := s.interviewRepo.ListMessages(session.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	detail := s.buildSessionDetail(session, messages)
-	return &SubmitInterviewMessageResponse{
-		Message:           toMessageItem(*interviewerReply),
-		CurrentQuestionID: detail.CurrentQuestionID,
-		Questions:         detail.Questions,
-		StatusItems:       detail.StatusItems,
-		ScoreItems:        detail.ScoreItems,
-		KnowledgeHits:     detail.KnowledgeHits,
-	}, nil
+	return &SubmitInterviewMessageResponse{Accepted: true}, nil
 }
 
 func (s *interviewService) StreamSession(ctx context.Context, userID, sessionID uint64, emit InterviewStreamEmitter) error {
@@ -258,92 +250,130 @@ func (s *interviewService) StreamSession(ctx context.Context, userID, sessionID 
 		return ErrInterviewSessionNotFound
 	}
 
-	lastMessage := messages[len(messages)-1]
-	detail := s.buildSessionDetail(session, messages)
-	references := s.buildKnowledgeHits()
-	scores := s.buildScoreItems()
-
-	steps := []func() error{
-		func() error {
-			return emit("state", StateEventPayload{
-				CurrentQuestionID: detail.CurrentQuestionID,
-				Questions:         detail.Questions,
-				StatusItems:       detail.StatusItems,
-				AgentStage:        "session_created",
-			})
-		},
-		func() error {
-			return emit("state", StateEventPayload{
-				CurrentQuestionID: detail.CurrentQuestionID,
-				Questions:         detail.Questions,
-				StatusItems:       s.buildStreamingStatusItems(session, "retrieving_knowledge"),
-				AgentStage:        "retrieving_knowledge",
-			})
-		},
-		func() error {
-			return emit("reference", ReferenceEventPayload{KnowledgeHits: references})
-		},
-		func() error {
-			return emit("state", StateEventPayload{
-				CurrentQuestionID: detail.CurrentQuestionID,
-				Questions:         detail.Questions,
-				StatusItems:       s.buildStreamingStatusItems(session, "scoring"),
-				ScoreItems:        scores,
-				AgentStage:        "scoring",
-			})
-		},
+	candidateMessage, currentQuestionMessage, err := s.findRoundContext(messages)
+	if err != nil {
+		return err
 	}
 
-	for _, step := range steps {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := step(); err != nil {
-			return err
-		}
-		time.Sleep(250 * time.Millisecond)
+	baseDetail := s.buildSessionDetail(session, messages)
+	if err := emit("state", StateEventPayload{
+		CurrentQuestionID: baseDetail.CurrentQuestionID,
+		Questions:         baseDetail.Questions,
+		StatusItems:       s.buildStreamingStatusItems(session, "generating_question"),
+		AgentStage:        "generating_question",
+	}); err != nil {
+		return err
 	}
 
 	if err := emit("state", StateEventPayload{
-		CurrentQuestionID: detail.CurrentQuestionID,
-		Questions:         detail.Questions,
+		CurrentQuestionID: baseDetail.CurrentQuestionID,
+		Questions:         baseDetail.Questions,
+		StatusItems:       s.buildStreamingStatusItems(session, "retrieving_knowledge"),
+		AgentStage:        "retrieving_knowledge",
+	}); err != nil {
+		return err
+	}
+
+	knowledgeHits, ragContext, err := s.retrieveKnowledge(ctx, currentQuestionMessage.Content, candidateMessage.Content, session.JobRole)
+	if err != nil {
+		return err
+	}
+	if err := emit("reference", ReferenceEventPayload{KnowledgeHits: knowledgeHits}); err != nil {
+		return err
+	}
+
+	evaluation, err := s.evaluateAnswer(ctx, session, currentQuestionMessage.Content, candidateMessage.Content, ragContext)
+	if err != nil {
+		return err
+	}
+	scoreItems := s.buildScoreItemsFromEvaluation(evaluation)
+
+	if err := emit("state", StateEventPayload{
+		CurrentQuestionID: baseDetail.CurrentQuestionID,
+		Questions:         baseDetail.Questions,
+		StatusItems:       s.buildStreamingStatusItems(session, "scoring"),
+		ScoreItems:        scoreItems,
+		AgentStage:        "scoring",
+	}); err != nil {
+		return err
+	}
+
+	if err := emit("state", StateEventPayload{
+		CurrentQuestionID: baseDetail.CurrentQuestionID,
+		Questions:         baseDetail.Questions,
 		StatusItems:       s.buildStreamingStatusItems(session, "generating_followup"),
-		ScoreItems:        scores,
+		ScoreItems:        scoreItems,
 		AgentStage:        "generating_followup",
 	}); err != nil {
 		return err
 	}
-	time.Sleep(250 * time.Millisecond)
 
-	for _, chunk := range s.splitTextForStream(lastMessage.Content) {
-		if err := ctx.Err(); err != nil {
-			return err
+	nextRound := session.TotalRounds + 1
+	questionID := fmt.Sprintf("q-%d", nextRound)
+	var builder strings.Builder
+	err = s.llmService.StreamText(ctx, StreamTextRequest{
+		SystemPrompt: buildInterviewFollowupSystemPrompt(),
+		Messages: []LLMMessage{
+			{Role: "user", Content: buildInterviewFollowupUserPrompt(session.Mode, session.JobRole, currentQuestionMessage.Content, candidateMessage.Content, ragContext, evaluation)},
+		},
+	}, func(chunk StreamTextChunk) error {
+		if chunk.Delta == "" {
+			return nil
 		}
-		if err := emit("delta", DeltaEventPayload{Content: chunk}); err != nil {
-			return err
-		}
-		time.Sleep(180 * time.Millisecond)
+		builder.WriteString(chunk.Delta)
+		return emit("delta", DeltaEventPayload{Content: chunk.Delta})
+	})
+	if err != nil {
+		return err
 	}
 
-	finalStatus := s.buildStreamingStatusItems(session, "completed")
+	finalReply := strings.TrimSpace(builder.String())
+	if finalReply == "" {
+		return errors.New("llm returned empty follow-up response")
+	}
+
+	interviewerMessage := &model.InterviewMessage{
+		SessionID:     session.ID,
+		Role:          "interviewer",
+		RoundNo:       nextRound,
+		QuestionID:    questionID,
+		Content:       finalReply,
+		ScoreSnapshot: s.mustMarshalScoreSnapshot(evaluation.ExpressionScore, evaluation.AccuracyScore, evaluation.StructureScore),
+	}
+	if err := s.interviewRepo.CreateMessage(interviewerMessage); err != nil {
+		return err
+	}
+
+	session.TotalRounds = nextRound
+	if err := s.interviewRepo.UpdateSession(session); err != nil {
+		return err
+	}
+
+	updatedMessages, err := s.interviewRepo.ListMessages(session.ID)
+	if err != nil {
+		return err
+	}
+	finalDetail := s.buildSessionDetail(session, updatedMessages)
+	finalStatusItems := s.buildStreamingStatusItems(session, "completed")
+
 	if err := emit("state", StateEventPayload{
-		CurrentQuestionID: detail.CurrentQuestionID,
-		Questions:         detail.Questions,
-		StatusItems:       finalStatus,
-		ScoreItems:        scores,
+		CurrentQuestionID: finalDetail.CurrentQuestionID,
+		Questions:         finalDetail.Questions,
+		StatusItems:       finalStatusItems,
+		ScoreItems:        scoreItems,
 		AgentStage:        "completed",
 	}); err != nil {
 		return err
 	}
 
 	return emit("done", DoneEventPayload{
-		CurrentQuestionID: detail.CurrentQuestionID,
-		Questions:         detail.Questions,
-		StatusItems:       finalStatus,
-		ScoreItems:        scores,
-		KnowledgeHits:     references,
+		CurrentQuestionID: finalDetail.CurrentQuestionID,
+		Questions:         finalDetail.Questions,
+		StatusItems:       finalStatusItems,
+		ScoreItems:        scoreItems,
+		KnowledgeHits:     knowledgeHits,
 		AgentStage:        "completed",
-		Message:           pointerToMessageItem(toMessageItem(lastMessage)),
+		Message:           pointerToMessageItem(toMessageItem(*interviewerMessage)),
 	})
 }
 
@@ -360,6 +390,89 @@ func (s *interviewService) FinishSession(userID, sessionID uint64) error {
 	session.Status = "finished"
 	session.EndedAt = &now
 	return s.interviewRepo.UpdateSession(session)
+}
+
+func (s *interviewService) generateInitialQuestion(ctx context.Context, mode, jobRole string) (string, error) {
+	response, err := s.llmService.GenerateText(ctx, GenerateTextRequest{
+		SystemPrompt: buildInterviewInitialQuestionSystemPrompt(),
+		Messages: []LLMMessage{{
+			Role:    "user",
+			Content: buildInterviewInitialQuestionUserPrompt(mode, jobRole),
+		}},
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(response.Content), nil
+}
+
+func (s *interviewService) retrieveKnowledge(ctx context.Context, currentQuestion, answer, jobRole string) ([]KnowledgeHitItem, string, error) {
+	if s.questionRetrieval == nil {
+		return []KnowledgeHitItem{}, "", nil
+	}
+
+	query := strings.TrimSpace(strings.Join([]string{currentQuestion, answer, jobRole}, "\n"))
+	hits, err := s.questionRetrieval.SearchQuestions(ctx, query, 3)
+	if err != nil {
+		if isRetrievalUnavailable(err) {
+			return []KnowledgeHitItem{}, "", nil
+		}
+		return nil, "", err
+	}
+
+	knowledgeHits := make([]KnowledgeHitItem, 0, len(hits))
+	contextLines := make([]string, 0, len(hits))
+	for idx, hit := range hits {
+		knowledgeHits = append(knowledgeHits, KnowledgeHitItem{
+			QuestionID: hit.QuestionID,
+			Title:      hit.Title,
+			Category:   hit.Category,
+			Score:      hit.Score,
+			Snippet:    summarizeText(hit.Text, 180),
+		})
+		contextLines = append(contextLines, fmt.Sprintf("[%d] %s | %s\n%s", idx+1, hit.Title, hit.Category, hit.Text))
+	}
+
+	return knowledgeHits, strings.Join(contextLines, "\n\n"), nil
+}
+
+func (s *interviewService) evaluateAnswer(ctx context.Context, session *model.InterviewSession, currentQuestion, answer, ragContext string) (*interviewEvaluationResult, error) {
+	response, err := s.llmService.GenerateText(ctx, GenerateTextRequest{
+		SystemPrompt: buildInterviewEvaluationSystemPrompt(),
+		Messages: []LLMMessage{{
+			Role:    "user",
+			Content: buildInterviewEvaluationUserPrompt(session.Mode, session.JobRole, currentQuestion, answer, ragContext),
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result interviewEvaluationResult
+	if err := unmarshalLooseJSON(response.Content, &result); err != nil {
+		return nil, err
+	}
+	result.ExpressionScore = clampScore(result.ExpressionScore, 0, 100)
+	result.AccuracyScore = clampScore(result.AccuracyScore, 0, 100)
+	result.StructureScore = clampScore(result.StructureScore, 0, 100)
+	return &result, nil
+}
+
+func (s *interviewService) findRoundContext(messages []model.InterviewMessage) (*model.InterviewMessage, *model.InterviewMessage, error) {
+	for idx := len(messages) - 1; idx >= 0; idx-- {
+		if messages[idx].Role != "candidate" {
+			continue
+		}
+		candidate := messages[idx]
+		for q := idx - 1; q >= 0; q-- {
+			if messages[q].Role == "interviewer" {
+				question := messages[q]
+				return &candidate, &question, nil
+			}
+		}
+		return &candidate, nil, errors.New("missing interviewer question context")
+	}
+	return nil, nil, errors.New("missing candidate answer for streaming round")
 }
 
 func (s *interviewService) buildSessionDetail(session *model.InterviewSession, messages []model.InterviewMessage) *InterviewSessionDetail {
@@ -391,21 +504,9 @@ func (s *interviewService) buildSessionDetail(session *model.InterviewSession, m
 		Questions:         questions,
 		Messages:          messageItems,
 		StatusItems:       s.buildStatusItems(session),
-		ScoreItems:        s.buildScoreItems(),
-		KnowledgeHits:     s.buildKnowledgeHits(),
+		ScoreItems:        []InterviewScoreItem{},
+		KnowledgeHits:     []KnowledgeHitItem{},
 	}
-}
-
-func (s *interviewService) buildInitialQuestion(mode, jobRole string) string {
-	return fmt.Sprintf("You are in %s mode for a %s role. Start with a concise self introduction and highlight your strongest frontend capability.", mode, jobRole)
-}
-
-func (s *interviewService) buildFollowupQuestion(answer string, round int) string {
-	preview := []rune(strings.TrimSpace(answer))
-	if len(preview) > 40 {
-		preview = preview[:40]
-	}
-	return fmt.Sprintf("You mentioned \"%s\". Please explain the technical decision, the implementation steps, and the measurable result behind it for round %d.", string(preview), round)
 }
 
 func (s *interviewService) buildStatusItems(session *model.InterviewSession) []InterviewStatusItem {
@@ -426,38 +527,12 @@ func (s *interviewService) buildStreamingStatusItems(session *model.InterviewSes
 	return append([]InterviewStatusItem{{Label: "Agent Stage", Value: stage}}, items...)
 }
 
-func (s *interviewService) buildScoreItems() []InterviewScoreItem {
+func (s *interviewService) buildScoreItemsFromEvaluation(evaluation *interviewEvaluationResult) []InterviewScoreItem {
 	return []InterviewScoreItem{
-		{Label: "Expression", Score: 82},
-		{Label: "Accuracy", Score: 80},
-		{Label: "Structure", Score: 79},
+		{Label: "Expression", Score: evaluation.ExpressionScore},
+		{Label: "Accuracy", Score: evaluation.AccuracyScore},
+		{Label: "Structure", Score: evaluation.StructureScore},
 	}
-}
-
-func (s *interviewService) buildKnowledgeHits() []KnowledgeHitItem {
-	return []KnowledgeHitItem{
-		{Name: "project communication", Level: "high", Summary: "The answer ties the response back to concrete project ownership and impact."},
-		{Name: "technical tradeoff", Level: "medium", Summary: "The candidate mentions the approach, but could quantify why it was chosen."},
-		{Name: "result validation", Level: "low", Summary: "The answer still needs clearer metrics and final outcome verification."},
-	}
-}
-
-func (s *interviewService) splitTextForStream(text string) []string {
-	runes := []rune(strings.TrimSpace(text))
-	if len(runes) == 0 {
-		return []string{"No interviewer feedback generated."}
-	}
-
-	chunkSize := 18
-	chunks := make([]string, 0, (len(runes)/chunkSize)+1)
-	for start := 0; start < len(runes); start += chunkSize {
-		end := start + chunkSize
-		if end > len(runes) {
-			end = len(runes)
-		}
-		chunks = append(chunks, string(runes[start:end]))
-	}
-	return chunks
 }
 
 func (s *interviewService) mustMarshalScoreSnapshot(expression, accuracy, structure int) string {
@@ -486,9 +561,40 @@ func pointerToMessageItem(item InterviewMessageItem) *InterviewMessageItem {
 	return &item
 }
 
+func summarizeText(text string, maxLen int) string {
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) <= maxLen {
+		return string(runes)
+	}
+	return string(runes[:maxLen]) + "..."
+}
+
+func unmarshalLooseJSON(content string, target any) error {
+	content = strings.TrimSpace(content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+	return json.Unmarshal([]byte(content), target)
+}
+
+func clampScore(value, minValue, maxValue int) int {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
 func max(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
+}
+
+func isRetrievalUnavailable(err error) bool {
+	return errors.Is(err, ErrEmbeddingNotConfigured) || errors.Is(err, vectorstore.ErrMilvusNotConfigured)
 }

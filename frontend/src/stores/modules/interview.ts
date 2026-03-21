@@ -10,13 +10,24 @@ import type {
   InterviewScoreItem,
   InterviewSessionDetail,
   InterviewStatusItem,
-  KnowledgeHitItem,
+  KnowledgeReferenceItem,
+  RawKnowledgeReferencePayloadItem,
   ReferenceEventPayload,
   StateEventPayload,
 } from '@/types/interview';
 
 const STREAMING_MESSAGE_ID = '__streaming_interviewer_message__';
 const CANDIDATE_TEMP_PREFIX = 'candidate-';
+
+function normalizeKnowledgeReference(item: RawKnowledgeReferencePayloadItem, index: number): KnowledgeReferenceItem {
+  return {
+    questionId: item.questionId ?? `legacy-${index + 1}`,
+    title: item.title ?? item.name ?? `Reference ${index + 1}`,
+    category: item.category ?? 'Knowledge',
+    score: typeof item.score === 'number' ? item.score : 0,
+    snippet: item.snippet ?? item.summary ?? '',
+  };
+}
 
 export const useInterviewStore = defineStore('interview', () => {
   const sessionId = ref('');
@@ -33,7 +44,7 @@ export const useInterviewStore = defineStore('interview', () => {
   const messages = ref<InterviewMessageItem[]>([]);
   const statusItems = ref<InterviewStatusItem[]>([]);
   const scoreItems = ref<InterviewScoreItem[]>([]);
-  const knowledgeHits = ref<KnowledgeHitItem[]>([]);
+  const knowledgeHits = ref<KnowledgeReferenceItem[]>([]);
 
   const currentQuestion = computed(() => {
     return questions.value.find((item) => item.id === currentQuestionId.value) ?? null;
@@ -51,7 +62,7 @@ export const useInterviewStore = defineStore('interview', () => {
     messages.value = detail.messages;
     statusItems.value = detail.statusItems;
     scoreItems.value = detail.scoreItems;
-    knowledgeHits.value = detail.knowledgeHits;
+    knowledgeHits.value = (detail.knowledgeHits ?? []).map(normalizeKnowledgeReference);
     agentStage.value = detail.agentStage ?? 'session_created';
   };
 
@@ -167,7 +178,7 @@ export const useInterviewStore = defineStore('interview', () => {
 
   const applyStreamReference = (payload: ReferenceEventPayload) => {
     if (payload.knowledgeHits) {
-      knowledgeHits.value = payload.knowledgeHits;
+      knowledgeHits.value = payload.knowledgeHits.map(normalizeKnowledgeReference);
     }
   };
 

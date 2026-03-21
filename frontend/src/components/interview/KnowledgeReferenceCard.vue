@@ -10,30 +10,37 @@
     <el-empty v-if="!items.length" description="No knowledge references yet." />
 
     <div v-else class="knowledge-reference-card">
-      <div v-for="item in items" :key="item.name" class="knowledge-reference-card__item">
+      <div v-for="item in items" :key="item.questionId" class="knowledge-reference-card__item">
         <div class="knowledge-reference-card__top">
-          <strong>{{ item.name }}</strong>
-          <el-tag size="small" :type="tagTypeMap[item.level]">{{ item.level }}</el-tag>
+          <div class="knowledge-reference-card__meta">
+            <strong>{{ item.title }}</strong>
+            <span class="knowledge-reference-card__category">{{ item.category }}</span>
+          </div>
+          <el-tag size="small" type="success">{{ formatScore(item.score) }}</el-tag>
         </div>
-        <p>{{ item.summary }}</p>
+
+        <div class="knowledge-reference-card__id">Question ID: {{ item.questionId }}</div>
+        <p>{{ item.snippet }}</p>
       </div>
     </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import type { KnowledgeHitItem } from '@/types/interview';
-
-const tagTypeMap: Record<KnowledgeHitItem['level'], 'danger' | 'warning' | 'success'> = {
-  high: 'success',
-  medium: 'warning',
-  low: 'danger',
-};
+import type { KnowledgeReferenceItem } from '@/types/interview';
 
 defineProps<{
-  items: KnowledgeHitItem[];
+  items: KnowledgeReferenceItem[];
   streaming: boolean;
 }>();
+
+const formatScore = (score: number) => {
+  if (!Number.isFinite(score) || score <= 0) {
+    return 'Match';
+  }
+
+  return score <= 1 ? score.toFixed(3) : Math.round(score).toString();
+};
 </script>
 
 <style scoped lang="scss">
@@ -66,14 +73,39 @@ defineProps<{
 
 .knowledge-reference-card__top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.knowledge-reference-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.knowledge-reference-card__meta strong {
+  color: var(--color-text-primary);
+}
+
+.knowledge-reference-card__category,
+.knowledge-reference-card__id,
+.knowledge-reference-card__item p {
+  color: var(--color-text-secondary);
+}
+
+.knowledge-reference-card__category,
+.knowledge-reference-card__id {
+  font-size: 12px;
+}
+
+.knowledge-reference-card__id {
+  margin-top: 8px;
 }
 
 .knowledge-reference-card__item p {
   margin: 10px 0 0;
   line-height: 1.7;
-  color: var(--color-text-secondary);
 }
 </style>

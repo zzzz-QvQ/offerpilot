@@ -3,21 +3,46 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
-	Port           string
-	MySQLDSN       string
-	JWTSecret      string
-	JWTExpireHours int
+	Port                   string
+	MySQLDSN               string
+	JWTSecret              string
+	JWTExpireHours         int
+	LLMBaseURL             string
+	LLMAPIKey              string
+	LLMModel               string
+	EmbeddingBaseURL       string
+	EmbeddingAPIKey        string
+	EmbeddingModel         string
+	MilvusBaseURL          string
+	MilvusToken            string
+	MilvusDatabase         string
+	MilvusCollection       string
+	MilvusVectorDim        int
+	EnableQuestionIndexing bool
 }
 
 func Load() Config {
 	return Config{
-		Port:           getEnv("APP_PORT", "8080"),
-		MySQLDSN:       getEnv("MYSQL_DSN", "root:password@tcp(127.0.0.1:3306)/offerpilot?charset=utf8mb4&parseTime=True&loc=Local"),
-		JWTSecret:      getEnv("APP_JWT_SECRET", "change_me"),
-		JWTExpireHours: getEnvAsInt("APP_JWT_EXPIRE_HOURS", 72),
+		Port:                   getEnv("APP_PORT", "8080"),
+		MySQLDSN:               getEnv("MYSQL_DSN", "root:password@tcp(127.0.0.1:3306)/offerpilot?charset=utf8mb4&parseTime=True&loc=Local"),
+		JWTSecret:              getEnv("APP_JWT_SECRET", "change_me"),
+		JWTExpireHours:         getEnvAsInt("APP_JWT_EXPIRE_HOURS", 72),
+		LLMBaseURL:             getEnv("LLM_BASE_URL", "https://api.openai.com/v1"),
+		LLMAPIKey:              getEnv("LLM_API_KEY", ""),
+		LLMModel:               getEnv("LLM_MODEL", "gpt-4o-mini"),
+		EmbeddingBaseURL:       getEnv("EMBEDDING_BASE_URL", "https://api.openai.com/v1"),
+		EmbeddingAPIKey:        getEnv("EMBEDDING_API_KEY", ""),
+		EmbeddingModel:         getEnv("EMBEDDING_MODEL", "text-embedding-3-small"),
+		MilvusBaseURL:          getEnv("MILVUS_BASE_URL", "http://127.0.0.1:19530"),
+		MilvusToken:            getEnv("MILVUS_TOKEN", ""),
+		MilvusDatabase:         getEnv("MILVUS_DATABASE", "default"),
+		MilvusCollection:       getEnv("MILVUS_COLLECTION", "question_knowledge"),
+		MilvusVectorDim:        getEnvAsInt("MILVUS_VECTOR_DIM", 1536),
+		EnableQuestionIndexing: getEnvAsBool("ENABLE_QUESTION_INDEXING", false),
 	}
 }
 
@@ -41,4 +66,20 @@ func getEnvAsInt(key string, fallback int) int {
 	}
 
 	return parsed
+}
+
+func getEnvAsBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if value == "" {
+		return fallback
+	}
+
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }

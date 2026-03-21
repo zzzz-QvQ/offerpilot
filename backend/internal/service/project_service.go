@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,6 +58,14 @@ type projectRawInput struct {
 	Role             string `json:"role"`
 }
 
+type projectGeneratedContent struct {
+	ResumeVersion    string                `json:"resumeVersion"`
+	InterviewVersion string                `json:"interviewVersion"`
+	Highlights       []string              `json:"highlights"`
+	Difficulties     []string              `json:"difficulties"`
+	Followups        []ProjectFollowupItem `json:"followups"`
+}
+
 type ProjectService interface {
 	Create(userID uint64, req CreateProjectPolishRequest) (*ProjectPolishResponse, error)
 	GetHistory(userID uint64) ([]ProjectHistoryItem, error)
@@ -65,15 +74,19 @@ type ProjectService interface {
 
 type projectService struct {
 	projectRepo repository.ProjectRepository
+	llmService  LLMService
 }
 
-func NewProjectService(projectRepo repository.ProjectRepository) ProjectService {
-	return &projectService{projectRepo: projectRepo}
+func NewProjectService(projectRepo repository.ProjectRepository, llmService LLMService) ProjectService {
+	return &projectService{projectRepo: projectRepo, llmService: llmService}
 }
 
 func (s *projectService) Create(userID uint64, req CreateProjectPolishRequest) (*ProjectPolishResponse, error) {
 	normalized := s.normalizeInput(req)
-	generated := s.generateContent(normalized)
+	generated, err := s.generateContent(normalized)
+	if err != nil {
+		return nil, err
+	}
 
 	rawInputPayload, err := json.Marshal(normalized)
 	if err != nil {
@@ -173,43 +186,30 @@ func (s *projectService) normalizeInput(req CreateProjectPolishRequest) projectR
 	}
 }
 
-func (s *projectService) generateContent(input projectRawInput) *ProjectPolishResponse {
-	highlights := []string{
-		fmt.Sprintf("Built the core modules of %s with %s, covering design, implementation and release delivery.", input.ProjectName, input.TechStack),
-		fmt.Sprintf("Improved maintainability and delivery efficiency by structuring the solution around %s.", input.Background),
-		fmt.Sprintf("Owned %s responsibilities and pushed key requirements to production on schedule.", input.Role),
+func (s *projectService) generateContent(input projectRawInput) (*ProjectPolishResponse, error) {
+	response, err := s.llmService.GenerateText(context.Background(), GenerateTextRequest{
+		SystemPrompt: buildProjectPolishSystemPrompt(),
+		Messages: []LLMMessage{{
+			Role:    "user",
+			Content: buildProjectPolishUserPrompt(input),
+		}},
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	difficultyItems := []string{
-		fmt.Sprintf("Challenge: %s. Solution: split the risk into smaller modules and add validation and rollback safeguards.", input.Difficulties),
-		fmt.Sprintf("Challenge: delivering %s under fast business iteration. Solution: abstract reusable components and harden boundary handling before release.", input.ProjectName),
+	var generated projectGeneratedContent
+	if err := unmarshalLooseJSON(response.Content, &generated); err != nil {
+		return nil, err
 	}
-
-	followups := []ProjectFollowupItem{
-		{
-			Question: fmt.Sprintf("What was the most important technical decision you made in %s?", input.ProjectName),
-			Answer:   fmt.Sprintf("I evaluated tradeoffs around %s and chose an approach based on %s, balancing delivery speed, maintainability and future extensibility.", input.Background, input.TechStack),
-		},
-		{
-			Question: "What was the hardest problem in the project and how did you solve it?",
-			Answer:   fmt.Sprintf("The hardest part was %s. I handled it in three steps: root-cause analysis, solution validation and controlled rollout with result verification.", input.Difficulties),
-		},
-		{
-			Question: "What business outcome did the project finally achieve?",
-			Answer:   fmt.Sprintf("The final result was %s, and the team also retained a more reusable engineering solution for follow-up work.", input.Achievements),
-		},
-	}
-
-	resumeDescription := fmt.Sprintf("Owned core engineering for %s, built key modules with %s, drove %s, and supported %s.", input.ProjectName, input.TechStack, input.Responsibilities, input.Achievements)
-	interviewDescription := fmt.Sprintf("In %s, I was mainly responsible for %s. The project background was %s and the stack was %s. The biggest challenge was %s, which I resolved through structured validation and staged rollout. The final outcome was %s.", input.ProjectName, input.Responsibilities, input.Background, input.TechStack, input.Difficulties, input.Achievements)
 
 	return &ProjectPolishResponse{
-		ResumeDescription:    resumeDescription,
-		InterviewDescription: interviewDescription,
-		Highlights:           highlights,
-		Difficulties:         difficultyItems,
-		Followups:            followups,
-	}
+		ResumeDescription:    strings.TrimSpace(generated.ResumeVersion),
+		InterviewDescription: strings.TrimSpace(generated.InterviewVersion),
+		Highlights:           ensureStringSlice(trimStringSlice(generated.Highlights), []string{"Completed core business modules and shipped them with stable delivery quality."}),
+		Difficulties:         ensureStringSlice(trimStringSlice(generated.Difficulties), []string{fmt.Sprintf("Challenge and solution: %s", input.Difficulties)}),
+		Followups:            ensureFollowups(trimFollowups(generated.Followups)),
+	}, nil
 }
 
 func (s *projectService) fromRecord(record *model.ProjectPolishRecord) *ProjectPolishResponse {
@@ -285,4 +285,28 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func trimStringSlice(items []string) []string {
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func trimFollowups(items []ProjectFollowupItem) []ProjectFollowupItem {
+	result := make([]ProjectFollowupItem, 0, len(items))
+	for _, item := range items {
+		question := strings.TrimSpace(item.Question)
+		answer := strings.TrimSpace(item.Answer)
+		if question == "" || answer == "" {
+			continue
+		}
+		result = append(result, ProjectFollowupItem{Question: question, Answer: answer})
+	}
+	return result
 }

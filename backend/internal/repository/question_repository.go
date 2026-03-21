@@ -25,12 +25,14 @@ type QuestionListItem struct {
 	Difficulty     string
 	Content        string
 	StandardAnswer string
+	Tags           string
 	IsFavorite     bool
 }
 
 type QuestionRepository interface {
 	List(query QuestionQuery) ([]QuestionListItem, int64, error)
 	GetByID(userID uint64, questionID uint64) (*QuestionListItem, error)
+	ListAllForIndexing() ([]QuestionListItem, error)
 	AddFavorite(userID uint64, questionID uint64) error
 	RemoveFavorite(userID uint64, questionID uint64) error
 }
@@ -54,6 +56,7 @@ func (r *questionRepository) List(query QuestionQuery) ([]QuestionListItem, int6
 			questions.difficulty,
 			questions.content,
 			questions.standard_answer,
+			questions.tags,
 			CASE WHEN question_favorites.id IS NULL THEN false ELSE true END AS is_favorite
 		`).
 		Joins("LEFT JOIN question_favorites ON question_favorites.question_id = questions.id AND question_favorites.user_id = ?", query.UserID)
@@ -88,6 +91,7 @@ func (r *questionRepository) GetByID(userID uint64, questionID uint64) (*Questio
 			questions.difficulty,
 			questions.content,
 			questions.standard_answer,
+			questions.tags,
 			CASE WHEN question_favorites.id IS NULL THEN false ELSE true END AS is_favorite
 		`).
 		Joins("LEFT JOIN question_favorites ON question_favorites.question_id = questions.id AND question_favorites.user_id = ?", userID).
@@ -98,6 +102,27 @@ func (r *questionRepository) GetByID(userID uint64, questionID uint64) (*Questio
 	}
 
 	return &item, nil
+}
+
+func (r *questionRepository) ListAllForIndexing() ([]QuestionListItem, error) {
+	var items []QuestionListItem
+	if err := r.db.Model(&model.Question{}).
+		Select(`
+			questions.id,
+			questions.title,
+			questions.category,
+			questions.frequency,
+			questions.difficulty,
+			questions.content,
+			questions.standard_answer,
+			questions.tags,
+			false AS is_favorite
+		`).
+		Order("questions.id ASC").
+		Scan(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (r *questionRepository) AddFavorite(userID uint64, questionID uint64) error {
