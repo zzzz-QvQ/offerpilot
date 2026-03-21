@@ -3,7 +3,8 @@
     <template #header>
       <div class="review-chart-card__header">知识模块得分柱状图</div>
     </template>
-    <div ref="chartRef" class="review-chart"></div>
+    <el-empty v-if="!items.length" description="暂无薄弱点数据" />
+    <div v-else ref="chartRef" class="review-chart"></div>
   </el-card>
 </template>
 
@@ -20,44 +21,29 @@ const props = defineProps<{
 const { chartRef, setChartOption } = useEChart();
 
 const renderChart = () => {
+  if (!props.items.length) {
+    return;
+  }
+
   void setChartOption({
-    tooltip: {
-      trigger: 'axis',
-    },
-    grid: {
-      top: 20,
-      left: 16,
-      right: 16,
-      bottom: 12,
-      containLabel: true,
-    },
+    tooltip: { trigger: 'axis' },
+    grid: { top: 20, left: 16, right: 16, bottom: 12, containLabel: true },
     xAxis: {
       type: 'category',
       data: props.items.map((item) => item.name),
-      axisTick: {
-        show: false,
-      },
+      axisTick: { show: false },
     },
     yAxis: {
       type: 'value',
       max: 100,
-      splitLine: {
-        lineStyle: {
-          color: '#e5e7eb',
-        },
-      },
+      splitLine: { lineStyle: { color: '#e5e7eb' } },
     },
-    series: [
-      {
-        type: 'bar',
-        barWidth: 28,
-        data: props.items.map((item) => item.score),
-        itemStyle: {
-          color: '#60a5fa',
-          borderRadius: [8, 8, 0, 0],
-        },
-      },
-    ],
+    series: [{
+      type: 'bar',
+      barWidth: 28,
+      data: props.items.map((item) => item.score),
+      itemStyle: { color: '#60a5fa', borderRadius: [8, 8, 0, 0] },
+    }],
   });
 };
 

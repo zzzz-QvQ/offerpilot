@@ -10,6 +10,7 @@
     </template>
 
     <el-skeleton v-if="loading" :rows="8" animated />
+    <el-empty v-else-if="!items.length" description="暂无问答记录" />
 
     <div v-else class="interview-chat-panel__messages">
       <div

@@ -3,9 +3,12 @@ import type { ProjectHistoryItem, ProjectPolishFormData, ProjectPolishOutput } f
 
 export const projectApi = {
   generate(data: ProjectPolishFormData) {
-    return http.post<ProjectPolishOutput>('/projects/polish', data);
+    return http.post<ProjectPolishOutput>('/project/polish', data);
   },
   getHistory() {
-    return http.get<ProjectHistoryItem[]>('/projects/history');
+    return http.get<ProjectHistoryItem[]>('/project/polish/history');
+  },
+  getDetail(id: string) {
+    return http.get<ProjectPolishOutput>(`/project/polish/${id}`);
   },
 };

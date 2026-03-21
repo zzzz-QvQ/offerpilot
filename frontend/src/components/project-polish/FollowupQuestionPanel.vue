@@ -4,7 +4,8 @@
       <div class="followup-question-panel__header">可能追问与建议回答</div>
     </template>
 
-    <el-empty v-if="!items.length" description="暂无追问内容" />
+    <el-skeleton v-if="loading" :rows="4" animated />
+    <el-empty v-else-if="!items.length" description="暂无追问内容" />
 
     <div v-else class="followup-question-panel__list">
       <div v-for="item in items" :key="item.question" class="followup-question-panel__item">
@@ -20,6 +21,7 @@ import type { FollowupQuestionItem } from '@/types/project';
 
 defineProps<{
   items: FollowupQuestionItem[];
+  loading?: boolean;
 }>();
 </script>
 

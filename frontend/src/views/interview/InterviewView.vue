@@ -1,5 +1,17 @@
 <template>
   <div class="interview-view">
+    <el-alert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      closable="false"
+    />
+
+    <div class="interview-view__toolbar">
+      <el-button type="danger" plain :loading="finishing" @click="finishInterview">结束会话</el-button>
+    </div>
+
     <div class="interview-view__grid">
       <section class="interview-view__left">
         <InterviewQuestionList
@@ -38,6 +50,8 @@ import { useInterviewSession } from '@/composables/useInterviewSession';
 const {
   loading,
   submitting,
+  finishing,
+  error,
   questions,
   messages,
   statusItems,
@@ -46,12 +60,19 @@ const {
   currentQuestion,
   sendMessage,
   selectQuestion,
+  finishInterview,
 } = useInterviewSession();
 </script>
 
 <style scoped lang="scss">
 .interview-view {
   min-height: calc(100vh - 144px);
+}
+
+.interview-view__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
 }
 
 .interview-view__grid {

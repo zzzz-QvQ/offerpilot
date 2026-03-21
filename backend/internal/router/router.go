@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func New(authHandler *handler.AuthHandler, dashboardHandler *handler.DashboardHandler, questionHandler *handler.QuestionHandler, jwtSecret string) *gin.Engine {
+func New(authHandler *handler.AuthHandler, dashboardHandler *handler.DashboardHandler, questionHandler *handler.QuestionHandler, interviewHandler *handler.InterviewHandler, reviewHandler *handler.ReviewHandler, projectHandler *handler.ProjectHandler, jwtSecret string) *gin.Engine {
 	engine := gin.Default()
 
 	api := engine.Group("/api")
@@ -35,6 +35,30 @@ func New(authHandler *handler.AuthHandler, dashboardHandler *handler.DashboardHa
 			questions.GET("/:id", questionHandler.Detail)
 			questions.POST("/:id/favorite", questionHandler.AddFavorite)
 			questions.DELETE("/:id/favorite", questionHandler.RemoveFavorite)
+		}
+
+		interview := api.Group("/interview")
+		interview.Use(middleware.JWTAuth(jwtSecret))
+		{
+			interview.POST("/session", interviewHandler.CreateSession)
+			interview.GET("/session/:id", interviewHandler.GetSession)
+			interview.POST("/session/:id/message", interviewHandler.SubmitMessage)
+			interview.POST("/session/:id/finish", interviewHandler.FinishSession)
+		}
+
+		review := api.Group("/review")
+		review.Use(middleware.JWTAuth(jwtSecret))
+		{
+			review.GET("/history", reviewHandler.GetHistory)
+			review.GET("/:sessionId", reviewHandler.GetReport)
+		}
+
+		project := api.Group("/project")
+		project.Use(middleware.JWTAuth(jwtSecret))
+		{
+			project.POST("/polish", projectHandler.Create)
+			project.GET("/polish/history", projectHandler.GetHistory)
+			project.GET("/polish/:id", projectHandler.GetDetail)
 		}
 	}
 

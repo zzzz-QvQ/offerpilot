@@ -8,6 +8,8 @@ export const useInterviewSession = () => {
   const {
     loading,
     submitting,
+    finishing,
+    error,
     questions,
     messages,
     statusItems,
@@ -24,8 +26,12 @@ export const useInterviewSession = () => {
     store.switchQuestion(questionId);
   };
 
+  const finishInterview = async () => {
+    await store.finishSession();
+  };
+
   onMounted(() => {
-    if (!store.sessionId) {
+    if (!store.sessionId && !store.loading) {
       void store.fetchSession();
     }
   });
@@ -33,6 +39,8 @@ export const useInterviewSession = () => {
   return {
     loading,
     submitting,
+    finishing,
+    error,
     questions,
     messages,
     statusItems,
@@ -41,5 +49,6 @@ export const useInterviewSession = () => {
     currentQuestion,
     sendMessage,
     selectQuestion,
+    finishInterview,
   };
 };

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-import { projectApi } from '@/services/modules/project';
+import { projectApi } from '@/api/project';
 import type { ProjectHistoryItem, ProjectPolishFormData, ProjectPolishOutput } from '@/types/project';
 
 const defaultForm = (): ProjectPolishFormData => ({
@@ -14,54 +14,92 @@ const defaultForm = (): ProjectPolishFormData => ({
 
 export const useProjectStore = defineStore('project', () => {
   const loading = ref(false);
+  const historyLoading = ref(false);
+  const detailLoading = ref(false);
+  const error = ref('');
+  const selectedHistoryId = ref('');
   const form = ref<ProjectPolishFormData>(defaultForm());
   const result = ref<ProjectPolishOutput | null>(null);
-  const historyList = ref<ProjectHistoryItem[]>([
-    {
-      id: 'history-1',
-      projectName: 'OfferPilot',
-      createdAt: '今天 16:30',
-      summary: '前端面试训练平台包装版本',
-    },
-    {
-      id: 'history-2',
-      projectName: '企业级低代码平台',
-      createdAt: '昨天 20:15',
-      summary: '强调组件体系与可配置能力',
-    },
-  ]);
+  const historyList = ref<ProjectHistoryItem[]>([]);
 
   const setForm = (payload: ProjectPolishFormData) => {
     form.value = payload;
   };
 
-  const generate = async () => {
-    loading.value = true;
+  const fetchHistory = async () => {
+    historyLoading.value = true;
 
     try {
-      const data = await projectApi.generateProjectPolish(form.value);
-      result.value = data;
+      const response = await projectApi.getHistory();
+      historyList.value = response.data;
+    } finally {
+      historyLoading.value = false;
+    }
+  };
 
-      historyList.value = [
-        {
-          id: `history-${Date.now()}`,
-          projectName: form.value.projectName,
-          createdAt: '刚刚',
-          summary: data.resumeDescription.slice(0, 28),
-        },
-        ...historyList.value,
-      ];
+  const fetchDetail = async (id: string) => {
+    detailLoading.value = true;
+    error.value = '';
+
+    try {
+      const response = await projectApi.getDetail(id);
+      result.value = response.data;
+      selectedHistoryId.value = id;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '加载项目包装详情失败';
+      throw err;
+    } finally {
+      detailLoading.value = false;
+    }
+  };
+
+  const generate = async () => {
+    loading.value = true;
+    error.value = '';
+
+    try {
+      const response = await projectApi.generate(form.value);
+      result.value = response.data;
+      selectedHistoryId.value = response.data.id;
+      await fetchHistory();
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '生成项目包装失败';
+      throw err;
     } finally {
       loading.value = false;
     }
   };
 
+  const initialize = async () => {
+    error.value = '';
+
+    try {
+      await fetchHistory();
+
+      if (historyList.value.length > 0) {
+        await fetchDetail(historyList.value[0].id);
+      } else {
+        result.value = null;
+        selectedHistoryId.value = '';
+      }
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '初始化项目包装数据失败';
+    }
+  };
+
   return {
     loading,
+    historyLoading,
+    detailLoading,
+    error,
+    selectedHistoryId,
     form,
     result,
     historyList,
     setForm,
+    fetchHistory,
+    fetchDetail,
     generate,
+    initialize,
   };
 });

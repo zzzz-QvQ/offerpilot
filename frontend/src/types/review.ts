@@ -25,3 +25,19 @@ export interface ReviewSuggestionItem {
   description: string;
   type: '建议' | '薄弱点';
 }
+
+export interface ReviewHistoryItem {
+  sessionId: string;
+  title: string;
+  finishedAt: string;
+  score: number;
+}
+
+export interface ReviewReportResponse {
+  overallScore: number;
+  summaryItems: ReviewSummaryItem[];
+  radarItems: ReviewRadarItem[];
+  weaknessItems: ReviewWeaknessItem[];
+  trendItems: ReviewTrendItem[];
+  suggestionItems: ReviewSuggestionItem[];
+}

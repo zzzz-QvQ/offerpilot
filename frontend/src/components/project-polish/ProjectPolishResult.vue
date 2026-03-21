@@ -6,7 +6,8 @@
       </div>
     </template>
 
-    <el-empty v-if="!result" description="请先填写项目信息并生成内容" />
+    <el-skeleton v-if="loading" :rows="10" animated />
+    <el-empty v-else-if="!result" description="请先填写项目信息并生成内容" />
 
     <div v-else class="project-polish-result__content">
       <section class="project-polish-result__section">
@@ -53,6 +54,7 @@ import type { ProjectPolishOutput } from '@/types/project';
 
 defineProps<{
   result: ProjectPolishOutput | null;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{

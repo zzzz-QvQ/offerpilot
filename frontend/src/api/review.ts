@@ -1,17 +1,11 @@
 import { http } from '@/utils/request';
-import type { ReviewRadarItem, ReviewSuggestionItem, ReviewSummaryItem, ReviewTrendItem, ReviewWeaknessItem } from '@/types/review';
-
-export interface ReviewOverview {
-  overallScore: number;
-  summaryItems: ReviewSummaryItem[];
-  radarItems: ReviewRadarItem[];
-  weaknessItems: ReviewWeaknessItem[];
-  trendItems: ReviewTrendItem[];
-  suggestionItems: ReviewSuggestionItem[];
-}
+import type { ReviewHistoryItem, ReviewReportResponse } from '@/types/review';
 
 export const reviewApi = {
-  getOverview() {
-    return http.get<ReviewOverview>('/reviews/overview');
+  getReport(sessionId: string) {
+    return http.get<ReviewReportResponse>(`/review/${sessionId}`);
+  },
+  getHistory() {
+    return http.get<ReviewHistoryItem[]>('/review/history');
   },
 };

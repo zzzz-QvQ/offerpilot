@@ -4,7 +4,9 @@
       <div class="review-suggestion-panel__header">学习建议与薄弱点</div>
     </template>
 
-    <div class="review-suggestion-panel__list">
+    <el-empty v-if="!items.length" description="暂无建议数据" />
+
+    <div v-else class="review-suggestion-panel__list">
       <div v-for="item in items" :key="`${item.type}-${item.title}`" class="review-suggestion-panel__item">
         <div class="review-suggestion-panel__top">
           <h3>{{ item.title }}</h3>

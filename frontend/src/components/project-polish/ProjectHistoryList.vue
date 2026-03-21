@@ -4,8 +4,17 @@
       <div class="project-history-list__header">历史记录</div>
     </template>
 
-    <div class="project-history-list__list">
-      <div v-for="item in items" :key="item.id" class="project-history-list__item">
+    <el-skeleton v-if="loading" :rows="4" animated />
+    <el-empty v-else-if="!items.length" description="暂无历史记录" />
+
+    <div v-else class="project-history-list__list">
+      <div
+        v-for="item in items"
+        :key="item.id"
+        class="project-history-list__item"
+        :class="{ 'is-active': item.id === activeId }"
+        @click="emit('select', item.id)"
+      >
         <h3>{{ item.projectName }}</h3>
         <div class="project-history-list__time">{{ item.createdAt }}</div>
         <p>{{ item.summary }}</p>
@@ -19,6 +28,12 @@ import type { ProjectHistoryItem } from '@/types/project';
 
 defineProps<{
   items: ProjectHistoryItem[];
+  loading?: boolean;
+  activeId?: string;
+}>();
+
+const emit = defineEmits<{
+  select: [id: string];
 }>();
 </script>
 
@@ -42,6 +57,14 @@ defineProps<{
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: #fcfdff;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.project-history-list__item:hover,
+.project-history-list__item.is-active {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: #eef4ff;
 }
 
 .project-history-list__item h3 {

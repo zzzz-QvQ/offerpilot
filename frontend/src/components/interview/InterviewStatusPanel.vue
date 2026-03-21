@@ -6,7 +6,9 @@
       </div>
     </template>
 
-    <div class="interview-status-panel">
+    <el-empty v-if="!statusItems.length && !scoreItems.length" description="暂无状态数据" />
+
+    <div v-else class="interview-status-panel">
       <div class="interview-status-panel__section">
         <div class="interview-status-panel__section-title">会话状态</div>
         <div class="interview-status-panel__status-list">

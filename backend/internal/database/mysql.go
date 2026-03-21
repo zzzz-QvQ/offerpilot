@@ -20,6 +20,10 @@ func NewMySQL(cfg config.Config) (*gorm.DB, error) {
 		&model.WeakPoint{},
 		&model.Question{},
 		&model.QuestionFavorite{},
+		&model.InterviewSession{},
+		&model.InterviewMessage{},
+		&model.ReviewReport{},
+		&model.ProjectPolishRecord{},
 	); err != nil {
 		return nil, err
 	}

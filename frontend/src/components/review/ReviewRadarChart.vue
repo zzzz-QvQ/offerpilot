@@ -3,7 +3,8 @@
     <template #header>
       <div class="review-chart-card__header">多维评分雷达图</div>
     </template>
-    <div ref="chartRef" class="review-chart"></div>
+    <el-empty v-if="!items.length" description="暂无评分数据" />
+    <div v-else ref="chartRef" class="review-chart"></div>
   </el-card>
 </template>
 
@@ -20,39 +21,26 @@ const props = defineProps<{
 const { chartRef, setChartOption } = useEChart();
 
 const renderChart = () => {
+  if (!props.items.length) {
+    return;
+  }
+
   void setChartOption({
     tooltip: {},
     radar: {
       radius: '62%',
-      indicator: props.items.map((item) => ({
-        name: item.name,
-        max: item.fullMark,
-      })),
-      splitArea: {
-        areaStyle: {
-          color: ['#f8fbff', '#f2f7ff'],
-        },
-      },
+      indicator: props.items.map((item) => ({ name: item.name, max: item.fullMark })),
+      splitArea: { areaStyle: { color: ['#f8fbff', '#f2f7ff'] } },
     },
-    series: [
-      {
-        type: 'radar',
-        data: [
-          {
-            value: props.items.map((item) => item.score),
-            areaStyle: {
-              color: 'rgba(37, 99, 235, 0.18)',
-            },
-            lineStyle: {
-              color: '#2563eb',
-            },
-            itemStyle: {
-              color: '#2563eb',
-            },
-          },
-        ],
-      },
-    ],
+    series: [{
+      type: 'radar',
+      data: [{
+        value: props.items.map((item) => item.score),
+        areaStyle: { color: 'rgba(37, 99, 235, 0.18)' },
+        lineStyle: { color: '#2563eb' },
+        itemStyle: { color: '#2563eb' },
+      }],
+    }],
   });
 };
 

@@ -7,6 +7,7 @@
     </template>
 
     <el-skeleton v-if="loading" :rows="6" animated />
+    <el-empty v-else-if="!items.length" description="暂无问题数据" />
 
     <div v-else class="interview-question-list">
       <div

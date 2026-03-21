@@ -1,7 +1,10 @@
+export type InterviewQuestionStatus = '待开始' | '进行中' | '已完成';
+export type KnowledgeHitLevel = '高' | '中' | '低';
+
 export interface InterviewQuestionItem {
   id: string;
   title: string;
-  status: '待开始' | '进行中' | '已完成';
+  status: InterviewQuestionStatus;
 }
 
 export interface InterviewMessageItem {
@@ -23,15 +26,32 @@ export interface InterviewScoreItem {
 
 export interface KnowledgeHitItem {
   name: string;
-  level: '高' | '中' | '低';
+  level: KnowledgeHitLevel;
   summary: string;
 }
 
-export interface InterviewSessionSnapshot {
+export interface InterviewSessionDetail {
   sessionId: string;
   currentQuestionId: string;
   questions: InterviewQuestionItem[];
   messages: InterviewMessageItem[];
+  statusItems: InterviewStatusItem[];
+  scoreItems: InterviewScoreItem[];
+  knowledgeHits: KnowledgeHitItem[];
+}
+
+export interface CreateInterviewSessionResponse {
+  sessionId: string;
+}
+
+export interface SubmitAnswerParams {
+  content: string;
+}
+
+export interface SubmitAnswerResponse {
+  message: InterviewMessageItem;
+  currentQuestionId: string;
+  questions: InterviewQuestionItem[];
   statusItems: InterviewStatusItem[];
   scoreItems: InterviewScoreItem[];
   knowledgeHits: KnowledgeHitItem[];

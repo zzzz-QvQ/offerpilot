@@ -6,7 +6,9 @@
       </div>
     </template>
 
-    <div class="knowledge-reference-card">
+    <el-empty v-if="!items.length" description="暂无知识命中数据" />
+
+    <div v-else class="knowledge-reference-card">
       <div v-for="item in items" :key="item.name" class="knowledge-reference-card__item">
         <div class="knowledge-reference-card__top">
           <strong>{{ item.name }}</strong>
@@ -22,9 +24,9 @@
 import type { KnowledgeHitItem } from '@/types/interview';
 
 const tagTypeMap: Record<KnowledgeHitItem['level'], 'danger' | 'warning' | 'success'> = {
-  '高': 'success',
-  '中': 'warning',
-  '低': 'danger',
+  高: 'success',
+  中: 'warning',
+  低: 'danger',
 };
 
 defineProps<{

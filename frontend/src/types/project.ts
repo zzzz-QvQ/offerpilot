@@ -12,6 +12,7 @@ export interface FollowupQuestionItem {
 }
 
 export interface ProjectPolishOutput {
+  id: string;
   resumeDescription: string;
   interviewDescription: string;
   highlights: string[];
