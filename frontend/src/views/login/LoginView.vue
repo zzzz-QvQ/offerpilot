@@ -6,6 +6,15 @@
         <p class="login-card__desc">前端面试智能训练平台</p>
       </div>
 
+      <el-alert
+        v-if="errorMessage"
+        :title="errorMessage"
+        type="error"
+        show-icon
+        class="login-card__alert"
+        @close="errorMessage = ''"
+      />
+
       <el-form
         ref="formRef"
         :model="form"
@@ -46,7 +55,6 @@
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useRouter } from 'vue-router';
 
@@ -57,6 +65,7 @@ const router = useRouter();
 const userStore = useUserStore();
 const formRef = ref<FormInstance>();
 const submitting = ref(false);
+const errorMessage = ref('');
 
 const form = reactive<LoginParams>({
   email: '',
@@ -79,6 +88,8 @@ const handleSubmit = async () => {
     return;
   }
 
+  errorMessage.value = '';
+
   const valid = await formRef.value.validate().catch(() => false);
 
   if (!valid) {
@@ -89,11 +100,9 @@ const handleSubmit = async () => {
 
   try {
     await userStore.login(form);
-    ElMessage.success('登录成功');
     await router.push('/dashboard');
   } catch (error) {
-    const message = error instanceof Error ? error.message : '登录失败';
-    ElMessage.error(message);
+    errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试';
   } finally {
     submitting.value = false;
   }
@@ -131,6 +140,10 @@ const handleSubmit = async () => {
 .login-card__desc {
   margin: 8px 0 0;
   color: var(--color-text-secondary);
+}
+
+.login-card__alert {
+  margin-bottom: 16px;
 }
 
 .login-card__action {

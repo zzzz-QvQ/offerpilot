@@ -1,4 +1,5 @@
 export type QuestionFrequency = '高频' | '中频';
+export type QuestionDifficulty = '基础' | '进阶';
 
 export interface QuestionCategoryOption {
   label: string;
@@ -12,7 +13,7 @@ export interface QuestionItem {
   frequency: QuestionFrequency;
   isFavorite: boolean;
   summary: string;
-  difficulty: '基础' | '进阶';
+  difficulty: QuestionDifficulty;
   answerPoints: string[];
 }
 

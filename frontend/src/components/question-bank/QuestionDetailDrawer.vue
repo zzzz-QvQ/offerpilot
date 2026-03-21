@@ -1,6 +1,8 @@
 <template>
   <el-drawer :model-value="visible" title="题目详情" size="560px" @close="emit('close')">
-    <template v-if="question">
+    <el-skeleton v-if="loading" :rows="8" animated />
+
+    <template v-else-if="question">
       <div class="question-detail-drawer__header">
         <h2 class="question-detail-drawer__title">{{ question.title }}</h2>
         <div class="question-detail-drawer__meta">
@@ -38,6 +40,7 @@ import type { QuestionItem } from '@/types/question-bank';
 defineProps<{
   visible: boolean;
   question: QuestionItem | null;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{

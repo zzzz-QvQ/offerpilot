@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
-import { questionBankApi } from '@/services/modules/question-bank';
+import { questionApi } from '@/api/question';
 import type { QuestionBankFilters, QuestionCategoryOption, QuestionItem } from '@/types/question-bank';
 
 const defaultFilters = (): QuestionBankFilters => ({
@@ -12,70 +12,115 @@ const defaultFilters = (): QuestionBankFilters => ({
 
 export const useQuestionBankStore = defineStore('questionBank', () => {
   const loading = ref(false);
+  const detailLoading = ref(false);
+  const favoriteLoadingId = ref('');
+  const error = ref('');
   const questions = ref<QuestionItem[]>([]);
   const filters = ref<QuestionBankFilters>(defaultFilters());
   const selectedQuestionId = ref('');
+  const selectedQuestion = ref<QuestionItem | null>(null);
   const detailVisible = ref(false);
 
   const categoryOptions = computed<QuestionCategoryOption[]>(() => {
     const categories = Array.from(new Set(questions.value.map((item) => item.category)));
-    return categories.map((category) => ({
-      label: category,
-      value: category,
-    }));
+    return categories.map((category) => ({ label: category, value: category }));
   });
 
-  const filteredQuestions = computed(() => {
-    return questions.value.filter((item) => {
-      const matchKeyword = !filters.value.keyword || item.title.toLowerCase().includes(filters.value.keyword.toLowerCase());
-      const matchCategory = !filters.value.category || item.category === filters.value.category;
-      const matchFrequency = !filters.value.frequency || item.frequency === filters.value.frequency;
-
-      return matchKeyword && matchCategory && matchFrequency;
-    });
-  });
-
-  const selectedQuestion = computed(() => {
-    return questions.value.find((item) => item.id === selectedQuestionId.value) ?? null;
-  });
+  const filteredQuestions = computed(() => questions.value);
 
   const fetchQuestions = async () => {
     loading.value = true;
+    error.value = '';
 
     try {
-      const data = await questionBankApi.fetchQuestionList();
-      questions.value = data;
+      const response = await questionApi.getList({
+        keyword: filters.value.keyword || undefined,
+        category: filters.value.category || undefined,
+        frequency: filters.value.frequency || undefined,
+        page: 1,
+        pageSize: 100,
+      });
 
-      if (!selectedQuestionId.value && data.length > 0) {
-        selectedQuestionId.value = data[0].id;
+      questions.value = response.data.list;
+
+      if (selectedQuestionId.value) {
+        const current = response.data.list.find((item) => item.id === selectedQuestionId.value) ?? null;
+        if (current) {
+          selectedQuestion.value = current;
+        }
       }
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '加载题库失败';
+      questions.value = [];
     } finally {
       loading.value = false;
     }
   };
 
-  const setFilters = (payload: Partial<QuestionBankFilters>) => {
+  const fetchQuestionDetail = async (questionId: string) => {
+    detailLoading.value = true;
+
+    try {
+      const response = await questionApi.getDetail(questionId);
+      selectedQuestion.value = response.data;
+      selectedQuestionId.value = questionId;
+    } finally {
+      detailLoading.value = false;
+    }
+  };
+
+  const setFilters = async (payload: Partial<QuestionBankFilters>) => {
     filters.value = {
       ...filters.value,
       ...payload,
     };
+
+    await fetchQuestions();
   };
 
-  const resetFilters = () => {
+  const resetFilters = async () => {
     filters.value = defaultFilters();
+    await fetchQuestions();
   };
 
-  const openQuestionDetail = (questionId: string) => {
-    selectedQuestionId.value = questionId;
+  const openQuestionDetail = async (questionId: string) => {
     detailVisible.value = true;
+    await fetchQuestionDetail(questionId);
   };
 
   const closeQuestionDetail = () => {
     detailVisible.value = false;
   };
 
+  const toggleFavorite = async (question: QuestionItem) => {
+    favoriteLoadingId.value = question.id;
+
+    try {
+      const response = question.isFavorite
+        ? await questionApi.removeFavorite(question.id)
+        : await questionApi.addFavorite(question.id);
+
+      const nextFavorite = response.data.isFavorite;
+      questions.value = questions.value.map((item) => (
+        item.id === question.id ? { ...item, isFavorite: nextFavorite } : item
+      ));
+
+      if (selectedQuestion.value?.id === question.id) {
+        selectedQuestion.value = {
+          ...selectedQuestion.value,
+          isFavorite: nextFavorite,
+        };
+      }
+    } finally {
+      favoriteLoadingId.value = '';
+    }
+  };
+
   return {
     loading,
+    detailLoading,
+    favoriteLoadingId,
+    error,
     questions,
     filters,
     detailVisible,
@@ -87,5 +132,6 @@ export const useQuestionBankStore = defineStore('questionBank', () => {
     resetFilters,
     openQuestionDetail,
     closeQuestionDetail,
+    toggleFavorite,
   };
 });

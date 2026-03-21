@@ -1,5 +1,13 @@
 <template>
   <div class="question-bank-view">
+    <el-alert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      closable="false"
+    />
+
     <QuestionFilterBar
       :filters="filters"
       :categories="categoryOptions"
@@ -10,12 +18,15 @@
     <QuestionList
       :items="filteredQuestions"
       :loading="loading"
+      :favorite-loading-id="favoriteLoadingId"
       @view-detail="handleViewDetail"
+      @toggle-favorite="handleToggleFavorite"
     />
 
     <QuestionDetailDrawer
       :visible="detailVisible"
       :question="selectedQuestion"
+      :loading="detailLoading"
       @close="closeDetail"
     />
   </div>
@@ -29,6 +40,9 @@ import { useQuestionBank } from '@/composables/useQuestionBank';
 
 const {
   loading,
+  detailLoading,
+  favoriteLoadingId,
+  error,
   filters,
   categoryOptions,
   filteredQuestions,
@@ -37,6 +51,7 @@ const {
   updateFilters,
   resetFilters,
   handleViewDetail,
+  handleToggleFavorite,
   closeDetail,
 } = useQuestionBank();
 </script>

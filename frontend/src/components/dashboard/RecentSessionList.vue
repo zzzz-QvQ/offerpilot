@@ -6,7 +6,10 @@
       </div>
     </template>
 
-    <div class="recent-session-list">
+    <el-skeleton v-if="loading" :rows="4" animated />
+    <el-empty v-else-if="!items.length" description="暂无训练记录" />
+
+    <div v-else class="recent-session-list">
       <div v-for="item in items" :key="item.id" class="recent-session-list__item">
         <div class="recent-session-list__main">
           <div class="recent-session-list__title-row">
@@ -30,6 +33,7 @@ import type { RecentSessionItem } from '@/types/dashboard';
 
 defineProps<{
   items: RecentSessionItem[];
+  loading?: boolean;
 }>();
 </script>
 

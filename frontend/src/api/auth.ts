@@ -9,6 +9,6 @@ export const authApi = {
     return http.post<void>('/auth/logout');
   },
   getProfile() {
-    return http.get<UserProfile>('/auth/profile');
+    return http.get<UserProfile>('/auth/me');
   },
 };

@@ -29,7 +29,7 @@
 
         <div class="main-layout__header-right">
           <span class="main-layout__nickname">{{ displayName }}</span>
-          <el-button link type="primary" @click="handleLogout">退出</el-button>
+          <el-button link type="primary" :loading="userStore.loggingOut" @click="handleLogout">退出</el-button>
         </div>
       </el-header>
 
@@ -64,7 +64,7 @@ const pageTitle = computed(() => String(route.meta.title ?? 'OfferPilot'));
 const displayName = computed(() => userStore.userInfo?.nickname || '未登录用户');
 
 const handleLogout = async () => {
-  userStore.logout();
+  await userStore.logout();
   await router.push('/login');
 };
 </script>

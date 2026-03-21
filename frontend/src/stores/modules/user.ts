@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
+import { authApi } from '@/api/auth';
 import { STORAGE_KEYS } from '@/constants/storage';
-import { authApi } from '@/services/modules/auth';
 import type { LoginParams, UserProfile } from '@/types/user';
 
 const readUserFromStorage = (): UserProfile | null => {
@@ -23,7 +23,16 @@ const readUserFromStorage = (): UserProfile | null => {
 export const useUserStore = defineStore('user', () => {
   const token = ref<string>(localStorage.getItem(STORAGE_KEYS.token) ?? '');
   const userInfo = ref<UserProfile | null>(readUserFromStorage());
-  const isLoggedIn = computed(() => Boolean(token.value));
+  const initializing = ref(false);
+  const loggingOut = ref(false);
+  const isLoggedIn = computed(() => Boolean(token.value) && Boolean(userInfo.value));
+
+  const clearAuthState = () => {
+    token.value = '';
+    userInfo.value = null;
+    localStorage.removeItem(STORAGE_KEYS.token);
+    localStorage.removeItem(STORAGE_KEYS.user);
+  };
 
   const setToken = (value: string) => {
     token.value = value;
@@ -41,29 +50,64 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem(STORAGE_KEYS.user);
   };
 
+  const fetchCurrentUser = async () => {
+    const result = await authApi.getProfile();
+    setUserInfo(result.data);
+    return result.data;
+  };
+
+  const restoreSession = async () => {
+    if (!token.value) {
+      clearAuthState();
+      return null;
+    }
+
+    initializing.value = true;
+
+    try {
+      return await fetchCurrentUser();
+    } catch {
+      clearAuthState();
+      return null;
+    } finally {
+      initializing.value = false;
+    }
+  };
+
   const login = async (params: LoginParams) => {
     const result = await authApi.login(params);
 
-    setToken(result.token);
-    setUserInfo(result.user);
+    setToken(result.data.token);
+    setUserInfo(result.data.user);
 
-    return result;
+    return result.data;
   };
 
-  const logout = () => {
-    token.value = '';
-    userInfo.value = null;
-    localStorage.removeItem(STORAGE_KEYS.token);
-    localStorage.removeItem(STORAGE_KEYS.user);
+  const logout = async () => {
+    loggingOut.value = true;
+
+    try {
+      if (token.value) {
+        await authApi.logout();
+      }
+    } finally {
+      clearAuthState();
+      loggingOut.value = false;
+    }
   };
 
   return {
     token,
     userInfo,
+    initializing,
+    loggingOut,
     isLoggedIn,
     setToken,
     setUserInfo,
+    fetchCurrentUser,
+    restoreSession,
     login,
     logout,
+    clearAuthState,
   };
 });

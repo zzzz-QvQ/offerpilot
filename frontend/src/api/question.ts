@@ -4,6 +4,11 @@ import type { QuestionBankFilters, QuestionItem } from '@/types/question-bank';
 
 export interface QuestionListParams extends Partial<QuestionBankFilters>, Partial<PageParams> {}
 
+export interface ToggleFavoriteResponse {
+  questionId: string;
+  isFavorite: boolean;
+}
+
 export const questionApi = {
   getList(params?: QuestionListParams) {
     return http.get<PageResult<QuestionItem>>('/questions', { params });
@@ -11,7 +16,10 @@ export const questionApi = {
   getDetail(questionId: string) {
     return http.get<QuestionItem>(`/questions/${questionId}`);
   },
-  toggleFavorite(questionId: string) {
-    return http.post<void>(`/questions/${questionId}/favorite`);
+  addFavorite(questionId: string) {
+    return http.post<ToggleFavoriteResponse>(`/questions/${questionId}/favorite`);
+  },
+  removeFavorite(questionId: string) {
+    return http.delete<ToggleFavoriteResponse>(`/questions/${questionId}/favorite`);
   },
 };

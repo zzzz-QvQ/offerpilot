@@ -2,18 +2,32 @@ import { onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 
 import { useQuestionBankStore } from '@/stores/modules/question-bank';
-import type { QuestionBankFilters } from '@/types/question-bank';
+import type { QuestionBankFilters, QuestionItem } from '@/types/question-bank';
 
 export const useQuestionBank = () => {
   const store = useQuestionBankStore();
-  const { loading, filters, categoryOptions, filteredQuestions, selectedQuestion, detailVisible } = storeToRefs(store);
+  const {
+    loading,
+    detailLoading,
+    favoriteLoadingId,
+    error,
+    filters,
+    categoryOptions,
+    filteredQuestions,
+    selectedQuestion,
+    detailVisible,
+  } = storeToRefs(store);
 
-  const updateFilters = (payload: Partial<QuestionBankFilters>) => {
-    store.setFilters(payload);
+  const updateFilters = async (payload: Partial<QuestionBankFilters>) => {
+    await store.setFilters(payload);
   };
 
-  const handleViewDetail = (questionId: string) => {
-    store.openQuestionDetail(questionId);
+  const handleViewDetail = async (questionId: string) => {
+    await store.openQuestionDetail(questionId);
+  };
+
+  const handleToggleFavorite = async (question: QuestionItem) => {
+    await store.toggleFavorite(question);
   };
 
   onMounted(() => {
@@ -24,6 +38,9 @@ export const useQuestionBank = () => {
 
   return {
     loading,
+    detailLoading,
+    favoriteLoadingId,
+    error,
     filters,
     categoryOptions,
     filteredQuestions,
@@ -32,6 +49,7 @@ export const useQuestionBank = () => {
     updateFilters,
     resetFilters: store.resetFilters,
     handleViewDetail,
+    handleToggleFavorite,
     closeDetail: store.closeQuestionDetail,
   };
 };

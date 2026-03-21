@@ -1,15 +1,14 @@
 import { http } from '@/utils/request';
-import type { DashboardStatItem, RecentSessionItem, RecommendTaskItem, WeakPointItem } from '@/types/dashboard';
-
-export interface DashboardOverview {
-  statCards: DashboardStatItem[];
-  recentSessions: RecentSessionItem[];
-  weakPoints: WeakPointItem[];
-  recommendTasks: RecommendTaskItem[];
-}
+import type { DashboardSummaryResponse, RecentSessionItem, WeakPointItem } from '@/types/dashboard';
 
 export const dashboardApi = {
-  getOverview() {
-    return http.get<DashboardOverview>('/dashboard/overview');
+  getSummary() {
+    return http.get<DashboardSummaryResponse>('/dashboard/summary');
+  },
+  getRecentSessions() {
+    return http.get<RecentSessionItem[]>('/dashboard/recent-sessions');
+  },
+  getWeakPoints() {
+    return http.get<WeakPointItem[]>('/dashboard/weak-points');
   },
 };

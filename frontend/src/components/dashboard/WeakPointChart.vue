@@ -6,7 +6,9 @@
       </div>
     </template>
 
-    <div ref="chartRef" class="weak-point-chart"></div>
+    <el-skeleton v-if="loading" :rows="6" animated />
+    <el-empty v-else-if="!items.length" description="暂无薄弱知识点数据" />
+    <div v-else ref="chartRef" class="weak-point-chart"></div>
   </el-card>
 </template>
 
@@ -18,11 +20,16 @@ import type { WeakPointItem } from '@/types/dashboard';
 
 const props = defineProps<{
   items: WeakPointItem[];
+  loading?: boolean;
 }>();
 
 const { chartRef, setChartOption } = useEChart();
 
 const renderChart = () => {
+  if (!props.items.length) {
+    return;
+  }
+
   void setChartOption({
     tooltip: {
       trigger: 'axis',

@@ -8,16 +8,22 @@
     </template>
 
     <el-empty v-if="!items.length && !loading" description="暂无匹配题目" />
-
     <el-skeleton v-else-if="loading" :rows="6" animated />
 
     <div v-else class="question-list">
       <div v-for="item in items" :key="item.id" class="question-list__item" @click="emit('view-detail', item.id)">
         <div class="question-list__top">
           <h3 class="question-list__title">{{ item.title }}</h3>
-          <el-icon class="question-list__favorite" :class="{ 'is-active': item.isFavorite }">
-            <StarFilled />
-          </el-icon>
+          <el-button
+            text
+            class="question-list__favorite-button"
+            :loading="favoriteLoadingId === item.id"
+            @click.stop="emit('toggle-favorite', item)"
+          >
+            <el-icon class="question-list__favorite" :class="{ 'is-active': item.isFavorite }">
+              <StarFilled />
+            </el-icon>
+          </el-button>
         </div>
 
         <div class="question-list__meta">
@@ -40,10 +46,12 @@ import type { QuestionItem } from '@/types/question-bank';
 defineProps<{
   items: QuestionItem[];
   loading: boolean;
+  favoriteLoadingId?: string;
 }>();
 
 const emit = defineEmits<{
   'view-detail': [questionId: string];
+  'toggle-favorite': [question: QuestionItem];
 }>();
 </script>
 
@@ -96,6 +104,10 @@ const emit = defineEmits<{
   font-size: 16px;
   font-weight: 600;
   color: var(--color-text-primary);
+}
+
+.question-list__favorite-button {
+  padding: 0;
 }
 
 .question-list__favorite {

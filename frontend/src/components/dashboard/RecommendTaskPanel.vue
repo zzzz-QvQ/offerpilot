@@ -6,7 +6,10 @@
       </div>
     </template>
 
-    <div class="recommend-task-panel">
+    <el-skeleton v-if="loading" :rows="4" animated />
+    <el-empty v-else-if="!items.length" description="暂无推荐任务" />
+
+    <div v-else class="recommend-task-panel">
       <div v-for="task in items" :key="task.id" class="recommend-task-panel__item">
         <div class="recommend-task-panel__top">
           <h3 class="recommend-task-panel__title">{{ task.title }}</h3>
@@ -29,6 +32,7 @@ const tagTypeMap: Record<RecommendTaskItem['level'], 'danger' | 'warning' | 'suc
 
 defineProps<{
   items: RecommendTaskItem[];
+  loading?: boolean;
 }>();
 </script>
 

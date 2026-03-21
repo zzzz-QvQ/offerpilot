@@ -24,3 +24,8 @@ export interface RecommendTaskItem {
   description: string;
   level: '高优先级' | '中优先级' | '巩固建议';
 }
+
+export interface DashboardSummaryResponse {
+  statCards: DashboardStatItem[];
+  recommendTasks: RecommendTaskItem[];
+}
