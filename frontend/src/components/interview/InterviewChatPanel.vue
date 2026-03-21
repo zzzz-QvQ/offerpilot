@@ -3,14 +3,15 @@
     <template #header>
       <div class="interview-panel__header interview-chat-panel__header">
         <div>
-          <div class="interview-chat-panel__title">问答主区域</div>
-          <div class="interview-chat-panel__subtitle">{{ currentQuestion?.title ?? '请选择题目' }}</div>
+          <div class="interview-chat-panel__title">Conversation</div>
+          <div class="interview-chat-panel__subtitle">{{ currentQuestion?.title ?? 'Select a question to inspect the current round.' }}</div>
         </div>
+        <el-tag v-if="streaming" size="small" type="primary">Streaming</el-tag>
       </div>
     </template>
 
     <el-skeleton v-if="loading" :rows="8" animated />
-    <el-empty v-else-if="!items.length" description="暂无问答记录" />
+    <el-empty v-else-if="!items.length" description="No interview messages yet." />
 
     <div v-else class="interview-chat-panel__messages">
       <div
@@ -19,8 +20,11 @@
         class="interview-chat-panel__message"
         :class="`is-${item.role}`"
       >
-        <div class="interview-chat-panel__role">{{ item.role === 'interviewer' ? '面试官' : '你' }}</div>
-        <div class="interview-chat-panel__bubble">{{ item.content }}</div>
+        <div class="interview-chat-panel__role">{{ item.role === 'interviewer' ? 'Interviewer' : 'You' }}</div>
+        <div class="interview-chat-panel__bubble">
+          {{ item.content || (item.isStreaming ? 'Generating response...' : '') }}
+          <span v-if="item.isStreaming" class="interview-chat-panel__cursor" />
+        </div>
         <div class="interview-chat-panel__time">{{ item.time }}</div>
       </div>
     </div>
@@ -34,6 +38,7 @@ defineProps<{
   items: InterviewMessageItem[];
   currentQuestion: InterviewQuestionItem | null;
   loading: boolean;
+  streaming: boolean;
 }>();
 </script>
 
@@ -56,6 +61,13 @@ defineProps<{
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.interview-chat-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .interview-chat-panel__title {
@@ -107,5 +119,21 @@ defineProps<{
   margin-top: 6px;
   font-size: 12px;
   color: var(--color-text-secondary);
+}
+
+.interview-chat-panel__cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  margin-left: 4px;
+  vertical-align: middle;
+  background: currentColor;
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
 }
 </style>

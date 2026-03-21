@@ -1,5 +1,14 @@
-export type InterviewQuestionStatus = '待开始' | '进行中' | '已完成';
-export type KnowledgeHitLevel = '高' | '中' | '低';
+export type InterviewQuestionStatus = 'pending' | 'in_progress' | 'completed';
+export type KnowledgeHitLevel = 'high' | 'medium' | 'low';
+export type InterviewAgentStage =
+  | 'session_created'
+  | 'generating_question'
+  | 'retrieving_knowledge'
+  | 'scoring'
+  | 'generating_followup'
+  | 'completed';
+
+export type InterviewSSEEventType = 'delta' | 'state' | 'reference' | 'done';
 
 export interface InterviewQuestionItem {
   id: string;
@@ -12,6 +21,7 @@ export interface InterviewMessageItem {
   role: 'interviewer' | 'candidate';
   content: string;
   time: string;
+  isStreaming?: boolean;
 }
 
 export interface InterviewStatusItem {
@@ -38,6 +48,7 @@ export interface InterviewSessionDetail {
   statusItems: InterviewStatusItem[];
   scoreItems: InterviewScoreItem[];
   knowledgeHits: KnowledgeHitItem[];
+  agentStage?: InterviewAgentStage;
 }
 
 export interface CreateInterviewSessionResponse {
@@ -49,10 +60,60 @@ export interface SubmitAnswerParams {
 }
 
 export interface SubmitAnswerResponse {
-  message: InterviewMessageItem;
-  currentQuestionId: string;
-  questions: InterviewQuestionItem[];
-  statusItems: InterviewStatusItem[];
-  scoreItems: InterviewScoreItem[];
-  knowledgeHits: KnowledgeHitItem[];
+  accepted: boolean;
+}
+
+export interface DeltaEventPayload {
+  content: string;
+}
+
+export interface StateEventPayload {
+  currentQuestionId?: string;
+  questions?: InterviewQuestionItem[];
+  statusItems?: InterviewStatusItem[];
+  scoreItems?: InterviewScoreItem[];
+  agentStage?: InterviewAgentStage;
+}
+
+export interface ReferenceEventPayload {
+  knowledgeHits?: KnowledgeHitItem[];
+}
+
+export interface DoneEventPayload {
+  currentQuestionId?: string;
+  questions?: InterviewQuestionItem[];
+  statusItems?: InterviewStatusItem[];
+  scoreItems?: InterviewScoreItem[];
+  knowledgeHits?: KnowledgeHitItem[];
+  agentStage?: InterviewAgentStage;
+  message?: InterviewMessageItem;
+}
+
+export interface DeltaEvent {
+  type: 'delta';
+  payload: DeltaEventPayload;
+}
+
+export interface StateEvent {
+  type: 'state';
+  payload: StateEventPayload;
+}
+
+export interface ReferenceEvent {
+  type: 'reference';
+  payload: ReferenceEventPayload;
+}
+
+export interface DoneEvent {
+  type: 'done';
+  payload: DoneEventPayload;
+}
+
+export type InterviewSSEEvent = DeltaEvent | StateEvent | ReferenceEvent | DoneEvent;
+
+export interface InterviewSSEEventMap {
+  delta: DeltaEventPayload;
+  state: StateEventPayload;
+  reference: ReferenceEventPayload;
+  done: DoneEventPayload;
 }

@@ -42,6 +42,7 @@ func New(authHandler *handler.AuthHandler, dashboardHandler *handler.DashboardHa
 		{
 			interview.POST("/session", interviewHandler.CreateSession)
 			interview.GET("/session/:id", interviewHandler.GetSession)
+			interview.GET("/session/:id/stream", interviewHandler.StreamSession)
 			interview.POST("/session/:id/message", interviewHandler.SubmitMessage)
 			interview.POST("/session/:id/finish", interviewHandler.FinishSession)
 		}

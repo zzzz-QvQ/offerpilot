@@ -1,12 +1,13 @@
 <template>
   <el-card class="interview-panel" shadow="never">
     <template #header>
-      <div class="interview-panel__header">
-        <span>知识命中区</span>
+      <div class="interview-panel__header knowledge-reference-card__header">
+        <span>Knowledge References</span>
+        <el-tag v-if="streaming" size="small" type="info">Updating</el-tag>
       </div>
     </template>
 
-    <el-empty v-if="!items.length" description="暂无知识命中数据" />
+    <el-empty v-if="!items.length" description="No knowledge references yet." />
 
     <div v-else class="knowledge-reference-card">
       <div v-for="item in items" :key="item.name" class="knowledge-reference-card__item">
@@ -24,13 +25,14 @@
 import type { KnowledgeHitItem } from '@/types/interview';
 
 const tagTypeMap: Record<KnowledgeHitItem['level'], 'danger' | 'warning' | 'success'> = {
-  高: 'success',
-  中: 'warning',
-  低: 'danger',
+  high: 'success',
+  medium: 'warning',
+  low: 'danger',
 };
 
 defineProps<{
   items: KnowledgeHitItem[];
+  streaming: boolean;
 }>();
 </script>
 
@@ -41,6 +43,12 @@ defineProps<{
 
 .interview-panel__header {
   font-weight: 600;
+}
+
+.knowledge-reference-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .knowledge-reference-card {

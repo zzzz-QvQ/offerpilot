@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"offerpilot/backend/internal/model"
 	"offerpilot/backend/internal/repository"
 	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -57,6 +59,7 @@ type InterviewSessionDetail struct {
 	StatusItems       []InterviewStatusItem   `json:"statusItems"`
 	ScoreItems        []InterviewScoreItem    `json:"scoreItems"`
 	KnowledgeHits     []KnowledgeHitItem      `json:"knowledgeHits"`
+	AgentStage        string                  `json:"agentStage,omitempty"`
 }
 
 type CreateInterviewSessionResponse struct {
@@ -76,10 +79,39 @@ type SubmitInterviewMessageResponse struct {
 	KnowledgeHits     []KnowledgeHitItem      `json:"knowledgeHits"`
 }
 
+type StateEventPayload struct {
+	CurrentQuestionID string                  `json:"currentQuestionId,omitempty"`
+	Questions         []InterviewQuestionItem `json:"questions,omitempty"`
+	StatusItems       []InterviewStatusItem   `json:"statusItems,omitempty"`
+	ScoreItems        []InterviewScoreItem    `json:"scoreItems,omitempty"`
+	AgentStage        string                  `json:"agentStage"`
+}
+
+type ReferenceEventPayload struct {
+	KnowledgeHits []KnowledgeHitItem `json:"knowledgeHits"`
+}
+
+type DeltaEventPayload struct {
+	Content string `json:"content"`
+}
+
+type DoneEventPayload struct {
+	CurrentQuestionID string                  `json:"currentQuestionId,omitempty"`
+	Questions         []InterviewQuestionItem `json:"questions,omitempty"`
+	StatusItems       []InterviewStatusItem   `json:"statusItems,omitempty"`
+	ScoreItems        []InterviewScoreItem    `json:"scoreItems,omitempty"`
+	KnowledgeHits     []KnowledgeHitItem      `json:"knowledgeHits,omitempty"`
+	AgentStage        string                  `json:"agentStage"`
+	Message           *InterviewMessageItem   `json:"message,omitempty"`
+}
+
+type InterviewStreamEmitter func(eventType string, payload any) error
+
 type InterviewService interface {
 	CreateSession(userID uint64, req CreateInterviewSessionRequest) (*CreateInterviewSessionResponse, error)
 	GetSessionDetail(userID, sessionID uint64) (*InterviewSessionDetail, error)
 	SubmitMessage(userID, sessionID uint64, req SubmitInterviewMessageRequest) (*SubmitInterviewMessageResponse, error)
+	StreamSession(ctx context.Context, userID, sessionID uint64, emit InterviewStreamEmitter) error
 	FinishSession(userID, sessionID uint64) error
 }
 
@@ -94,12 +126,12 @@ func NewInterviewService(interviewRepo repository.InterviewRepository) Interview
 func (s *interviewService) CreateSession(userID uint64, req CreateInterviewSessionRequest) (*CreateInterviewSessionResponse, error) {
 	mode := req.Mode
 	if mode == "" {
-		mode = "综合模拟"
+		mode = "general"
 	}
 
 	jobRole := req.JobRole
 	if jobRole == "" {
-		jobRole = "前端工程师"
+		jobRole = "frontend engineer"
 	}
 
 	session := &model.InterviewSession{
@@ -144,7 +176,9 @@ func (s *interviewService) GetSessionDetail(userID, sessionID uint64) (*Intervie
 		return nil, err
 	}
 
-	return s.buildSessionDetail(session, messages), nil
+	detail := s.buildSessionDetail(session, messages)
+	detail.AgentStage = "session_created"
+	return detail, nil
 }
 
 func (s *interviewService) SubmitMessage(userID, sessionID uint64, req SubmitInterviewMessageRequest) (*SubmitInterviewMessageResponse, error) {
@@ -207,6 +241,112 @@ func (s *interviewService) SubmitMessage(userID, sessionID uint64, req SubmitInt
 	}, nil
 }
 
+func (s *interviewService) StreamSession(ctx context.Context, userID, sessionID uint64, emit InterviewStreamEmitter) error {
+	session, err := s.interviewRepo.GetSessionByID(sessionID, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrInterviewSessionNotFound
+		}
+		return err
+	}
+
+	messages, err := s.interviewRepo.ListMessages(session.ID)
+	if err != nil {
+		return err
+	}
+	if len(messages) == 0 {
+		return ErrInterviewSessionNotFound
+	}
+
+	lastMessage := messages[len(messages)-1]
+	detail := s.buildSessionDetail(session, messages)
+	references := s.buildKnowledgeHits()
+	scores := s.buildScoreItems()
+
+	steps := []func() error{
+		func() error {
+			return emit("state", StateEventPayload{
+				CurrentQuestionID: detail.CurrentQuestionID,
+				Questions:         detail.Questions,
+				StatusItems:       detail.StatusItems,
+				AgentStage:        "session_created",
+			})
+		},
+		func() error {
+			return emit("state", StateEventPayload{
+				CurrentQuestionID: detail.CurrentQuestionID,
+				Questions:         detail.Questions,
+				StatusItems:       s.buildStreamingStatusItems(session, "retrieving_knowledge"),
+				AgentStage:        "retrieving_knowledge",
+			})
+		},
+		func() error {
+			return emit("reference", ReferenceEventPayload{KnowledgeHits: references})
+		},
+		func() error {
+			return emit("state", StateEventPayload{
+				CurrentQuestionID: detail.CurrentQuestionID,
+				Questions:         detail.Questions,
+				StatusItems:       s.buildStreamingStatusItems(session, "scoring"),
+				ScoreItems:        scores,
+				AgentStage:        "scoring",
+			})
+		},
+	}
+
+	for _, step := range steps {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := step(); err != nil {
+			return err
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	if err := emit("state", StateEventPayload{
+		CurrentQuestionID: detail.CurrentQuestionID,
+		Questions:         detail.Questions,
+		StatusItems:       s.buildStreamingStatusItems(session, "generating_followup"),
+		ScoreItems:        scores,
+		AgentStage:        "generating_followup",
+	}); err != nil {
+		return err
+	}
+	time.Sleep(250 * time.Millisecond)
+
+	for _, chunk := range s.splitTextForStream(lastMessage.Content) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := emit("delta", DeltaEventPayload{Content: chunk}); err != nil {
+			return err
+		}
+		time.Sleep(180 * time.Millisecond)
+	}
+
+	finalStatus := s.buildStreamingStatusItems(session, "completed")
+	if err := emit("state", StateEventPayload{
+		CurrentQuestionID: detail.CurrentQuestionID,
+		Questions:         detail.Questions,
+		StatusItems:       finalStatus,
+		ScoreItems:        scores,
+		AgentStage:        "completed",
+	}); err != nil {
+		return err
+	}
+
+	return emit("done", DoneEventPayload{
+		CurrentQuestionID: detail.CurrentQuestionID,
+		Questions:         detail.Questions,
+		StatusItems:       finalStatus,
+		ScoreItems:        scores,
+		KnowledgeHits:     references,
+		AgentStage:        "completed",
+		Message:           pointerToMessageItem(toMessageItem(lastMessage)),
+	})
+}
+
 func (s *interviewService) FinishSession(userID, sessionID uint64) error {
 	session, err := s.interviewRepo.GetSessionByID(sessionID, userID)
 	if err != nil {
@@ -226,18 +366,16 @@ func (s *interviewService) buildSessionDetail(session *model.InterviewSession, m
 	currentQuestionID := fmt.Sprintf("q-%d", session.TotalRounds)
 	questions := make([]InterviewQuestionItem, 0, session.TotalRounds)
 	for i := 1; i <= max(session.TotalRounds, 1); i++ {
-		status := "待开始"
-		if i < session.TotalRounds {
-			status = "已完成"
-		} else if session.Status == "finished" {
-			status = "已完成"
+		status := "pending"
+		if i < session.TotalRounds || session.Status == "finished" {
+			status = "completed"
 		} else {
-			status = "进行中"
+			status = "in_progress"
 		}
 
 		questions = append(questions, InterviewQuestionItem{
 			ID:     fmt.Sprintf("q-%d", i),
-			Title:  fmt.Sprintf("第 %d 轮问题", i),
+			Title:  fmt.Sprintf("Round %d", i),
 			Status: status,
 		})
 	}
@@ -259,44 +397,67 @@ func (s *interviewService) buildSessionDetail(session *model.InterviewSession, m
 }
 
 func (s *interviewService) buildInitialQuestion(mode, jobRole string) string {
-	return fmt.Sprintf("当前模式为%s，请先做一个 2 分钟的自我介绍，并说明你在%s岗位上最拿手的能力。", mode, jobRole)
+	return fmt.Sprintf("You are in %s mode for a %s role. Start with a concise self introduction and highlight your strongest frontend capability.", mode, jobRole)
 }
 
 func (s *interviewService) buildFollowupQuestion(answer string, round int) string {
-	preview := []rune(answer)
-	if len(preview) > 24 {
-		preview = preview[:24]
+	preview := []rune(strings.TrimSpace(answer))
+	if len(preview) > 40 {
+		preview = preview[:40]
 	}
-	return fmt.Sprintf("你刚才提到“%s”，请继续展开说明你的技术决策、落地过程以及最终结果。", string(preview))
+	return fmt.Sprintf("You mentioned \"%s\". Please explain the technical decision, the implementation steps, and the measurable result behind it for round %d.", string(preview), round)
 }
 
 func (s *interviewService) buildStatusItems(session *model.InterviewSession) []InterviewStatusItem {
-	statusText := "模拟中"
+	statusText := "in_progress"
 	if session.Status == "finished" {
-		statusText = "已结束"
+		statusText = "completed"
 	}
 	return []InterviewStatusItem{
-		{Label: "会话状态", Value: statusText},
-		{Label: "当前轮次", Value: fmt.Sprintf("第 %d 轮", max(session.TotalRounds, 1))},
-		{Label: "模式", Value: session.Mode},
-		{Label: "岗位", Value: session.JobRole},
+		{Label: "Session", Value: statusText},
+		{Label: "Round", Value: fmt.Sprintf("%d", max(session.TotalRounds, 1))},
+		{Label: "Mode", Value: session.Mode},
+		{Label: "Role", Value: session.JobRole},
 	}
+}
+
+func (s *interviewService) buildStreamingStatusItems(session *model.InterviewSession, stage string) []InterviewStatusItem {
+	items := s.buildStatusItems(session)
+	return append([]InterviewStatusItem{{Label: "Agent Stage", Value: stage}}, items...)
 }
 
 func (s *interviewService) buildScoreItems() []InterviewScoreItem {
 	return []InterviewScoreItem{
-		{Label: "表达完整度", Score: 82},
-		{Label: "知识准确性", Score: 80},
-		{Label: "结构清晰度", Score: 79},
+		{Label: "Expression", Score: 82},
+		{Label: "Accuracy", Score: 80},
+		{Label: "Structure", Score: 79},
 	}
 }
 
 func (s *interviewService) buildKnowledgeHits() []KnowledgeHitItem {
 	return []KnowledgeHitItem{
-		{Name: "项目表达", Level: "高", Summary: "能够围绕项目经历组织答案。"},
-		{Name: "技术决策", Level: "中", Summary: "提到了方案，但还可以更量化。"},
-		{Name: "结果复盘", Level: "低", Summary: "建议补充指标和结果验证。"},
+		{Name: "project communication", Level: "high", Summary: "The answer ties the response back to concrete project ownership and impact."},
+		{Name: "technical tradeoff", Level: "medium", Summary: "The candidate mentions the approach, but could quantify why it was chosen."},
+		{Name: "result validation", Level: "low", Summary: "The answer still needs clearer metrics and final outcome verification."},
 	}
+}
+
+func (s *interviewService) splitTextForStream(text string) []string {
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) == 0 {
+		return []string{"No interviewer feedback generated."}
+	}
+
+	chunkSize := 18
+	chunks := make([]string, 0, (len(runes)/chunkSize)+1)
+	for start := 0; start < len(runes); start += chunkSize {
+		end := start + chunkSize
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, string(runes[start:end]))
+	}
+	return chunks
 }
 
 func (s *interviewService) mustMarshalScoreSnapshot(expression, accuracy, structure int) string {
@@ -309,12 +470,20 @@ func (s *interviewService) mustMarshalScoreSnapshot(expression, accuracy, struct
 }
 
 func toMessageItem(message model.InterviewMessage) InterviewMessageItem {
+	createdAt := message.CreatedAt
+	if createdAt == 0 {
+		createdAt = time.Now().UnixMilli()
+	}
 	return InterviewMessageItem{
 		ID:      strconv.FormatUint(message.ID, 10),
 		Role:    message.Role,
 		Content: message.Content,
-		Time:    time.UnixMilli(message.CreatedAt).Format("15:04"),
+		Time:    time.UnixMilli(createdAt).Format("15:04"),
 	}
+}
+
+func pointerToMessageItem(item InterviewMessageItem) *InterviewMessageItem {
+	return &item
 }
 
 func max(a, b int) int {

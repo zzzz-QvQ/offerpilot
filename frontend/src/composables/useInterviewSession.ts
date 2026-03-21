@@ -1,7 +1,15 @@
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 
+import { interviewApi } from '@/api/interview';
+import { useSSEStream } from '@/composables/useSSEStream';
 import { useInterviewStore } from '@/stores/modules/interview';
+import type {
+  DeltaEvent,
+  DoneEvent,
+  ReferenceEvent,
+  StateEvent,
+} from '@/types/interview';
 
 export const useInterviewSession = () => {
   const store = useInterviewStore();
@@ -9,7 +17,11 @@ export const useInterviewSession = () => {
     loading,
     submitting,
     finishing,
+    isStreaming,
     error,
+    streamError,
+    streamStoppedByUser,
+    agentStage,
     questions,
     messages,
     statusItems,
@@ -18,8 +30,50 @@ export const useInterviewSession = () => {
     currentQuestion,
   } = storeToRefs(store);
 
+  const stream = useSSEStream({
+    onDelta: (event) => {
+      const payload = (event as DeltaEvent).payload;
+      if (typeof payload.content === 'string') {
+        store.appendStreamDelta(payload.content);
+      }
+    },
+    onState: (event) => {
+      store.applyStreamState((event as StateEvent).payload);
+    },
+    onReference: (event) => {
+      store.applyStreamReference((event as ReferenceEvent).payload);
+    },
+    onDone: (event) => {
+      store.finishStreamingReply((event as DoneEvent).payload);
+    },
+    onError: (message) => {
+      store.setStreamError(message);
+      store.interruptStreaming('error');
+    },
+  });
+
+  const displayError = computed(() => error.value || streamError.value);
+
   const sendMessage = async (content: string) => {
-    await store.submitAnswer(content);
+    if (store.isStreaming) {
+      return;
+    }
+
+    const accepted = await store.submitAnswer(content);
+    if (!accepted || !store.sessionId) {
+      return;
+    }
+
+    const started = stream.start(interviewApi.getStreamUrl(store.sessionId));
+    if (!started) {
+      store.setStreamError('A live stream is already running for the current session.');
+      store.interruptStreaming('error');
+    }
+  };
+
+  const stopStreaming = () => {
+    stream.stop();
+    store.interruptStreaming('manual');
   };
 
   const selectQuestion = (questionId: string) => {
@@ -27,6 +81,9 @@ export const useInterviewSession = () => {
   };
 
   const finishInterview = async () => {
+    if (store.isStreaming) {
+      stopStreaming();
+    }
     await store.finishSession();
   };
 
@@ -40,7 +97,10 @@ export const useInterviewSession = () => {
     loading,
     submitting,
     finishing,
-    error,
+    isStreaming,
+    displayError,
+    streamStoppedByUser,
+    agentStage,
     questions,
     messages,
     statusItems,
@@ -48,6 +108,7 @@ export const useInterviewSession = () => {
     knowledgeHits,
     currentQuestion,
     sendMessage,
+    stopStreaming,
     selectQuestion,
     finishInterview,
   };

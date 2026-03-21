@@ -52,6 +52,7 @@ function normalizeIncomingEvent(type: string, rawData: string): SSEStreamEvent {
 
 export function useSSEStream(options: UseSSEStreamOptions = {}) {
   const source = ref<EventSource | null>(null);
+  const currentUrl = ref('');
   const isStreaming = ref(false);
   const latestEvent = ref<SSEStreamEvent | null>(null);
   const error = ref<string | null>(null);
@@ -60,11 +61,13 @@ export function useSSEStream(options: UseSSEStreamOptions = {}) {
 
   const clearSource = () => {
     if (!source.value) {
+      currentUrl.value = '';
       return;
     }
 
     source.value.close();
     source.value = null;
+    currentUrl.value = '';
   };
 
   const stop = () => {
@@ -103,11 +106,16 @@ export function useSSEStream(options: UseSSEStreamOptions = {}) {
         const message = err instanceof Error ? err.message : 'Failed to handle SSE event.';
         error.value = message;
         options.onError?.(message, event);
+        stop();
       }
     });
   };
 
-  const start = (url: string) => {
+  const start = (url: string): boolean => {
+    if (source.value && isStreaming.value && currentUrl.value === url) {
+      return false;
+    }
+
     stop();
     error.value = null;
     latestEvent.value = null;
@@ -117,6 +125,7 @@ export function useSSEStream(options: UseSSEStreamOptions = {}) {
     });
 
     source.value = eventSource;
+    currentUrl.value = url;
     isStreaming.value = true;
 
     eventSource.onopen = () => {
@@ -125,14 +134,14 @@ export function useSSEStream(options: UseSSEStreamOptions = {}) {
     };
 
     eventSource.onerror = (event) => {
-      const message = 'SSE connection failed.';
+      const message = 'Live stream disconnected. Please retry or stop the current round.';
       error.value = message;
-      isStreaming.value = false;
       options.onError?.(message, event);
-      clearSource();
+      stop();
     };
 
     eventTypes.forEach(bindNamedEvent);
+    return true;
   };
 
   onBeforeUnmount(() => {

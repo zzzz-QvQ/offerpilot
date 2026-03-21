@@ -1,15 +1,25 @@
 <template>
   <div class="interview-view">
     <el-alert
-      v-if="error"
-      :title="error"
+      v-if="displayError"
+      :title="displayError"
       type="error"
       show-icon
-      closable="false"
+      :closable="false"
+    />
+
+    <el-alert
+      v-if="streamStoppedByUser"
+      title="Live output stopped. You can submit another answer to start a new round."
+      type="warning"
+      show-icon
+      :closable="false"
+      class="interview-view__alert"
     />
 
     <div class="interview-view__toolbar">
-      <el-button type="danger" plain :loading="finishing" @click="finishInterview">结束会话</el-button>
+      <el-button v-if="isStreaming" plain @click="stopStreaming">Stop Stream</el-button>
+      <el-button type="danger" plain :loading="finishing" @click="finishInterview">Finish Session</el-button>
     </div>
 
     <div class="interview-view__grid">
@@ -27,13 +37,24 @@
           :items="messages"
           :current-question="currentQuestion"
           :loading="loading"
+          :streaming="isStreaming"
         />
-        <InterviewInputBox :submitting="submitting" @submit="sendMessage" />
+        <InterviewInputBox
+          :submitting="submitting"
+          :streaming="isStreaming"
+          @submit="sendMessage"
+          @stop="stopStreaming"
+        />
       </section>
 
       <section class="interview-view__right">
-        <InterviewStatusPanel :status-items="statusItems" :score-items="scoreItems" />
-        <KnowledgeReferenceCard :items="knowledgeHits" />
+        <InterviewStatusPanel
+          :status-items="statusItems"
+          :score-items="scoreItems"
+          :streaming="isStreaming"
+          :agent-stage="agentStage"
+        />
+        <KnowledgeReferenceCard :items="knowledgeHits" :streaming="isStreaming" />
       </section>
     </div>
   </div>
@@ -51,7 +72,10 @@ const {
   loading,
   submitting,
   finishing,
-  error,
+  isStreaming,
+  displayError,
+  streamStoppedByUser,
+  agentStage,
   questions,
   messages,
   statusItems,
@@ -59,6 +83,7 @@ const {
   knowledgeHits,
   currentQuestion,
   sendMessage,
+  stopStreaming,
   selectQuestion,
   finishInterview,
 } = useInterviewSession();
@@ -69,10 +94,16 @@ const {
   min-height: calc(100vh - 144px);
 }
 
+.interview-view__alert {
+  margin-top: 12px;
+}
+
 .interview-view__toolbar {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
   margin-bottom: 16px;
+  margin-top: 16px;
 }
 
 .interview-view__grid {

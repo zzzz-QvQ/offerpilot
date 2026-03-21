@@ -5,11 +5,13 @@
       type="textarea"
       :rows="4"
       resize="none"
-      placeholder="请输入你的回答，当前为本地 mock 会话，后续可接入流式面试服务。"
+      placeholder="Enter your answer for the current round."
+      :disabled="submitting || streaming"
     />
 
     <div class="interview-input-box__actions">
-      <el-button type="primary" :loading="submitting" @click="handleSubmit">发送回答</el-button>
+      <el-button v-if="streaming" plain @click="emit('stop')">Stop</el-button>
+      <el-button type="primary" :loading="submitting" :disabled="streaming" @click="handleSubmit">Send Answer</el-button>
     </div>
   </el-card>
 </template>
@@ -20,10 +22,12 @@ import { ElMessage } from 'element-plus';
 
 const emit = defineEmits<{
   submit: [content: string];
+  stop: [];
 }>();
 
 defineProps<{
   submitting: boolean;
+  streaming: boolean;
 }>();
 
 const inputValue = ref('');
@@ -32,7 +36,7 @@ const handleSubmit = () => {
   const value = inputValue.value.trim();
 
   if (!value) {
-    ElMessage.warning('请输入回答内容');
+    ElMessage.warning('Please enter your answer first.');
     return;
   }
 
@@ -45,6 +49,7 @@ const handleSubmit = () => {
 .interview-input-box__actions {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
   margin-top: 14px;
 }
 </style>
