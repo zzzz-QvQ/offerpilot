@@ -1,7 +1,9 @@
 package config
 
 import (
+	"bufio"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -26,6 +28,8 @@ type Config struct {
 }
 
 func Load() Config {
+	loadDotEnv()
+
 	return Config{
 		Port:                   getEnv("APP_PORT", "8080"),
 		MySQLDSN:               getEnv("MYSQL_DSN", "root:password@tcp(127.0.0.1:3306)/offerpilot?charset=utf8mb4&parseTime=True&loc=Local"),
@@ -43,6 +47,48 @@ func Load() Config {
 		MilvusCollection:       getEnv("MILVUS_COLLECTION", "question_knowledge"),
 		MilvusVectorDim:        getEnvAsInt("MILVUS_VECTOR_DIM", 1536),
 		EnableQuestionIndexing: getEnvAsBool("ENABLE_QUESTION_INDEXING", false),
+	}
+}
+
+func loadDotEnv() {
+	candidates := []string{
+		".env",
+		filepath.Join("backend", ".env"),
+	}
+
+	for _, path := range candidates {
+		file, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			value = strings.Trim(value, `"'`)
+
+			if key == "" {
+				continue
+			}
+
+			if _, exists := os.LookupEnv(key); !exists {
+				_ = os.Setenv(key, value)
+			}
+		}
+
+		return
 	}
 }
 

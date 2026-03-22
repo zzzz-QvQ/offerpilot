@@ -1,4 +1,4 @@
-import { http } from '@/utils/request';
+﻿import { http } from '@/utils/request';
 import { STORAGE_KEYS } from '@/constants/storage';
 import type {
   CreateInterviewSessionResponse,
@@ -8,16 +8,19 @@ import type {
 } from '@/types/interview';
 
 const buildBaseURL = () => {
-  const baseURL = import.meta.env.VITE_API_BASE_URL ?? '';
+  const baseURL = String(import.meta.env.VITE_API_BASE_URL ?? '').trim();
+
   if (!baseURL) {
-    return window.location.origin;
+    return `${window.location.origin}/api`;
   }
 
   if (/^https?:\/\//.test(baseURL)) {
-    return baseURL;
+    const normalized = baseURL.replace(/\/$/, '');
+    return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
   }
 
-  return new URL(baseURL, window.location.origin).toString();
+  const resolved = new URL(baseURL, window.location.origin).toString().replace(/\/$/, '');
+  return resolved.endsWith('/api') ? resolved : `${resolved}/api`;
 };
 
 export const interviewApi = {
@@ -35,7 +38,7 @@ export const interviewApi = {
   },
   getStreamUrl(sessionId: string) {
     const token = localStorage.getItem(STORAGE_KEYS.token) ?? '';
-    const url = new URL(`/api/interview/session/${sessionId}/stream`, buildBaseURL());
+    const url = new URL(`/interview/session/${sessionId}/stream`, buildBaseURL());
 
     if (token) {
       url.searchParams.set('token', token);

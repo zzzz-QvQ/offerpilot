@@ -4,9 +4,21 @@ import { ElMessage } from 'element-plus';
 import { STORAGE_KEYS } from '@/constants/storage';
 import type { ApiResponse } from '@/types/api';
 
+const normalizeApiBaseURL = () => {
+  const rawBaseURL = String(import.meta.env.VITE_API_BASE_URL ?? '').trim();
+
+  if (!rawBaseURL) {
+    return '/api';
+  }
+
+  return rawBaseURL.endsWith('/api')
+    ? rawBaseURL
+    : `${rawBaseURL.replace(/\/$/, '')}/api`;
+};
+
 const createRequestInstance = (): AxiosInstance => {
   const instance = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL,
+    baseURL: normalizeApiBaseURL(),
     timeout: 15000,
   });
 

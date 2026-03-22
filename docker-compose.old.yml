@@ -1,0 +1,118 @@
+﻿# OfferPilot local infrastructure stack.
+#
+# This compose file focuses on local dependency startup for development:
+# - MySQL
+# - Redis
+# - Milvus standalone
+#
+# Notes:
+# 1. Milvus standalone requires etcd + MinIO, so they are included as internal dependencies.
+# 2. Backend / frontend services are not included yet because the repository does not currently
+#    contain production-ready Dockerfiles for them.
+# 3. Recommended workflow:
+#    - Start infrastructure with docker compose up -d
+#    - Run backend and frontend locally from source code
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: offerpilot-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-offerpilot}
+      MYSQL_USER: ${MYSQL_USER:-offerpilot}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-offerpilot123}
+    ports:
+      - '${MYSQL_PORT:-3306}:3306'
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-p${MYSQL_ROOT_PASSWORD:-password}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: offerpilot-redis
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: offerpilot-etcd
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: '1000'
+      ETCD_QUOTA_BACKEND_BYTES: '4294967296'
+      ETCD_SNAPSHOT_COUNT: '50000'
+    command: >
+      etcd
+      -advertise-client-urls=http://127.0.0.1:2379
+      -listen-client-urls=http://0.0.0.0:2379
+      --data-dir /etcd
+    volumes:
+      - etcd_data:/etcd
+
+  minio:
+    image: minio/minio:RELEASE.2024-02-09T21-25-16Z
+    container_name: offerpilot-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: minio server /minio_data --console-address ':9001'
+    ports:
+      - '${MINIO_API_PORT:-9000}:9000'
+      - '${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio_data:/minio_data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:9000/minio/health/live']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  milvus:
+    image: milvusdb/milvus:v2.4.6
+    container_name: offerpilot-milvus
+    restart: unless-stopped
+    command: ['milvus', 'run', 'standalone']
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    depends_on:
+      - etcd
+      - minio
+    ports:
+      - '${MILVUS_PORT:-19530}:19530'
+      - '${MILVUS_HTTP_PORT:-9091}:9091'
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:9091/healthz']
+      interval: 20s
+      timeout: 10s
+      retries: 15
+
+volumes:
+  mysql_data:
+  redis_data:
+  etcd_data:
+  minio_data:
+  milvus_data:

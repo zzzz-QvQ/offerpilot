@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-container class="main-layout">
     <el-aside class="main-layout__aside" width="240px">
       <div class="main-layout__brand">
@@ -29,7 +29,7 @@
 
         <div class="main-layout__header-right">
           <span class="main-layout__nickname">{{ displayName }}</span>
-          <el-button link type="primary" :loading="userStore.loggingOut" @click="handleLogout">退出</el-button>
+          <el-button link type="primary" :loading="userStore.loggingOut" @click="handleLogout">退出登录</el-button>
         </div>
       </el-header>
 
