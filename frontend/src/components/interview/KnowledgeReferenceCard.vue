@@ -1,13 +1,13 @@
-<template>
+﻿<template>
   <el-card class="interview-panel" shadow="never">
     <template #header>
       <div class="interview-panel__header knowledge-reference-card__header">
-        <span>Knowledge References</span>
-        <el-tag v-if="streaming" size="small" type="info">Updating</el-tag>
+        <span>知识命中</span>
+        <el-tag v-if="streaming" size="small" type="info">实时更新中</el-tag>
       </div>
     </template>
 
-    <el-empty v-if="!items.length" description="No knowledge references yet." />
+    <el-empty v-if="!items.length" description="当前还没有命中的参考知识" />
 
     <div v-else class="knowledge-reference-card">
       <div v-for="item in items" :key="item.questionId" class="knowledge-reference-card__item">
@@ -19,7 +19,7 @@
           <el-tag size="small" type="success">{{ formatScore(item.score) }}</el-tag>
         </div>
 
-        <div class="knowledge-reference-card__id">Question ID: {{ item.questionId }}</div>
+        <div class="knowledge-reference-card__id">题目 ID：{{ item.questionId }}</div>
         <p>{{ item.snippet }}</p>
       </div>
     </div>
@@ -36,7 +36,7 @@ defineProps<{
 
 const formatScore = (score: number) => {
   if (!Number.isFinite(score) || score <= 0) {
-    return 'Match';
+    return '已命中';
   }
 
   return score <= 1 ? score.toFixed(3) : Math.round(score).toString();

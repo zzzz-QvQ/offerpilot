@@ -260,10 +260,6 @@ export const useInterviewStore = defineStore('interview', () => {
     }
   };
 
-  const setError = (message: string) => {
-    error.value = message;
-  };
-
   const setStreamError = (message: string) => {
     streamError.value = message;
     streamStoppedByUser.value = false;
@@ -298,7 +294,6 @@ export const useInterviewStore = defineStore('interview', () => {
     interruptStreaming,
     rollbackPendingRound,
     clearStreamFeedback,
-    setError,
     setStreamError,
   };
 });

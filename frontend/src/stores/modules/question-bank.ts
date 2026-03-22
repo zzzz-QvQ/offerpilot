@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+﻿import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import { questionApi } from '@/api/question';
@@ -52,6 +52,7 @@ export const useQuestionBankStore = defineStore('questionBank', () => {
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载题库失败';
       questions.value = [];
+      selectedQuestion.value = null;
     } finally {
       loading.value = false;
     }
@@ -59,11 +60,16 @@ export const useQuestionBankStore = defineStore('questionBank', () => {
 
   const fetchQuestionDetail = async (questionId: string) => {
     detailLoading.value = true;
+    error.value = '';
 
     try {
       const response = await questionApi.getDetail(questionId);
       selectedQuestion.value = response.data;
       selectedQuestionId.value = questionId;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '加载题目详情失败';
+      selectedQuestion.value = null;
+      throw err;
     } finally {
       detailLoading.value = false;
     }
@@ -94,6 +100,7 @@ export const useQuestionBankStore = defineStore('questionBank', () => {
 
   const toggleFavorite = async (question: QuestionItem) => {
     favoriteLoadingId.value = question.id;
+    error.value = '';
 
     try {
       const response = question.isFavorite
@@ -111,9 +118,19 @@ export const useQuestionBankStore = defineStore('questionBank', () => {
           isFavorite: nextFavorite,
         };
       }
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '更新收藏状态失败';
+      throw err;
     } finally {
       favoriteLoadingId.value = '';
     }
+  };
+
+  const resetTransientState = () => {
+    detailVisible.value = false;
+    detailLoading.value = false;
+    favoriteLoadingId.value = '';
+    error.value = '';
   };
 
   return {
@@ -133,5 +150,6 @@ export const useQuestionBankStore = defineStore('questionBank', () => {
     openQuestionDetail,
     closeQuestionDetail,
     toggleFavorite,
+    resetTransientState,
   };
 });

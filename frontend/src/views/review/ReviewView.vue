@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="review-view">
     <el-alert
       v-if="reviewStore.error"

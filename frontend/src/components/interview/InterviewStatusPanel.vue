@@ -1,15 +1,15 @@
-<template>
+﻿<template>
   <el-card class="interview-panel" shadow="never">
     <template #header>
       <div class="interview-panel__header interview-status-panel__header">
-        <span>Status and Score</span>
-        <el-tag v-if="streaming" size="small" type="primary">Live</el-tag>
+        <span>状态与评分</span>
+        <el-tag v-if="streaming" size="small" type="primary">实时中</el-tag>
       </div>
     </template>
 
     <div class="interview-status-panel">
       <div class="interview-status-panel__section">
-        <div class="interview-status-panel__section-title">Agent Status</div>
+        <div class="interview-status-panel__section-title">Agent 状态</div>
         <div class="interview-status-panel__timeline">
           <div
             v-for="stage in stageDefinitions"
@@ -27,8 +27,8 @@
       </div>
 
       <div class="interview-status-panel__section">
-        <div class="interview-status-panel__section-title">Session Status</div>
-        <el-empty v-if="!statusItems.length" description="No status data yet." />
+        <div class="interview-status-panel__section-title">会话状态</div>
+        <el-empty v-if="!statusItems.length" description="当前还没有状态数据" />
         <div v-else class="interview-status-panel__status-list">
           <div v-for="item in statusItems" :key="item.label" class="interview-status-panel__status-item">
             <span>{{ item.label }}</span>
@@ -38,8 +38,8 @@
       </div>
 
       <div class="interview-status-panel__section">
-        <div class="interview-status-panel__section-title">Live Score</div>
-        <el-empty v-if="!scoreItems.length" description="No score data yet." />
+        <div class="interview-status-panel__section-title">实时评分</div>
+        <el-empty v-if="!scoreItems.length" description="当前还没有评分结果" />
         <div v-else class="interview-status-panel__score-list">
           <div v-for="item in scoreItems" :key="item.label" class="interview-status-panel__score-item">
             <div class="interview-status-panel__score-row">
@@ -71,12 +71,12 @@ const stageDefinitions: Array<{
   label: string;
   description: string;
 }> = [
-  { key: 'session_created', label: 'Session Created', description: 'Interview session is ready.' },
-  { key: 'generating_question', label: 'Generating Question', description: 'Agent is preparing the current prompt.' },
-  { key: 'retrieving_knowledge', label: 'Retrieving Knowledge', description: 'Relevant knowledge references are being gathered.' },
-  { key: 'scoring', label: 'Scoring', description: 'The latest answer is being evaluated.' },
-  { key: 'generating_followup', label: 'Generating Follow-up', description: 'Agent is drafting the next interviewer response.' },
-  { key: 'completed', label: 'Completed', description: 'The current round has finished.' },
+  { key: 'session_created', label: '会话已创建', description: '当前面试会话已经准备就绪。' },
+  { key: 'generating_question', label: '生成问题', description: '正在组织当前轮次的提问内容。' },
+  { key: 'retrieving_knowledge', label: '检索知识', description: '正在召回相关题库知识与参考信息。' },
+  { key: 'scoring', label: '评分分析', description: '正在评估上一条回答的表现。' },
+  { key: 'generating_followup', label: '生成追问', description: '正在生成反馈与下一条追问。' },
+  { key: 'completed', label: '当前轮结束', description: '当前这一轮的输出已经完成。' },
 ];
 
 const currentStageIndex = computed(() => {

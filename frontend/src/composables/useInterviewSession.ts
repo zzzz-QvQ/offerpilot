@@ -1,4 +1,4 @@
-import { computed, onMounted } from 'vue';
+﻿import { computed, onBeforeUnmount, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 
 import { interviewApi } from '@/api/interview';
@@ -66,7 +66,7 @@ export const useInterviewSession = () => {
 
     const started = stream.start(interviewApi.getStreamUrl(store.sessionId));
     if (!started) {
-      store.setStreamError('A live stream is already running for the current session.');
+      store.setStreamError('当前会话已经存在一个进行中的流式连接。');
       store.interruptStreaming('error');
     }
   };
@@ -88,9 +88,17 @@ export const useInterviewSession = () => {
   };
 
   onMounted(() => {
+    store.clearStreamFeedback();
     if (!store.sessionId && !store.loading) {
       void store.fetchSession();
     }
+  });
+
+  onBeforeUnmount(() => {
+    if (store.isStreaming) {
+      stopStreaming();
+    }
+    store.clearStreamFeedback();
   });
 
   return {

@@ -1,17 +1,17 @@
-<template>
+﻿<template>
   <el-card class="interview-panel interview-chat-panel" shadow="never">
     <template #header>
       <div class="interview-panel__header interview-chat-panel__header">
         <div>
-          <div class="interview-chat-panel__title">Conversation</div>
-          <div class="interview-chat-panel__subtitle">{{ currentQuestion?.title ?? 'Select a question to inspect the current round.' }}</div>
+          <div class="interview-chat-panel__title">问答主区域</div>
+          <div class="interview-chat-panel__subtitle">{{ currentQuestion?.title ?? '选择一个问题以查看当前轮次内容。' }}</div>
         </div>
-        <el-tag v-if="streaming" size="small" type="primary">Streaming</el-tag>
+        <el-tag v-if="streaming" size="small" type="primary">实时生成中</el-tag>
       </div>
     </template>
 
     <el-skeleton v-if="loading" :rows="8" animated />
-    <el-empty v-else-if="!items.length" description="No interview messages yet." />
+    <el-empty v-else-if="!items.length" description="当前还没有面试消息" />
 
     <div v-else class="interview-chat-panel__messages">
       <div
@@ -20,9 +20,9 @@
         class="interview-chat-panel__message"
         :class="`is-${item.role}`"
       >
-        <div class="interview-chat-panel__role">{{ item.role === 'interviewer' ? 'Interviewer' : 'You' }}</div>
+        <div class="interview-chat-panel__role">{{ item.role === 'interviewer' ? '面试官' : '你' }}</div>
         <div class="interview-chat-panel__bubble">
-          {{ item.content || (item.isStreaming ? 'Generating response...' : '') }}
+          {{ item.content || (item.isStreaming ? '正在生成回复...' : '') }}
           <span v-if="item.isStreaming" class="interview-chat-panel__cursor" />
         </div>
         <div class="interview-chat-panel__time">{{ item.time }}</div>

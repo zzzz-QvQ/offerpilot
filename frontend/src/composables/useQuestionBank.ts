@@ -1,4 +1,4 @@
-import { onMounted } from 'vue';
+﻿import { onBeforeUnmount, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 
 import { useQuestionBankStore } from '@/stores/modules/question-bank';
@@ -34,6 +34,10 @@ export const useQuestionBank = () => {
     if (!store.questions.length) {
       void store.fetchQuestions();
     }
+  });
+
+  onBeforeUnmount(() => {
+    store.resetTransientState();
   });
 
   return {

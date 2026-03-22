@@ -1,17 +1,19 @@
-<template>
+﻿<template>
   <el-card class="interview-input-box" shadow="never">
     <el-input
       v-model="inputValue"
       type="textarea"
       :rows="4"
       resize="none"
-      placeholder="Enter your answer for the current round."
+      placeholder="输入你对当前题目的回答"
       :disabled="submitting || streaming"
     />
 
     <div class="interview-input-box__actions">
-      <el-button v-if="streaming" plain @click="emit('stop')">Stop</el-button>
-      <el-button type="primary" :loading="submitting" :disabled="streaming" @click="handleSubmit">Send Answer</el-button>
+      <el-button v-if="streaming" plain @click="emit('stop')">停止输出</el-button>
+      <el-button type="primary" :loading="submitting" :disabled="streaming || !inputValue.trim()" @click="handleSubmit">
+        提交回答
+      </el-button>
     </div>
   </el-card>
 </template>
@@ -36,7 +38,7 @@ const handleSubmit = () => {
   const value = inputValue.value.trim();
 
   if (!value) {
-    ElMessage.warning('Please enter your answer first.');
+    ElMessage.warning('请先输入本轮回答内容');
     return;
   }
 

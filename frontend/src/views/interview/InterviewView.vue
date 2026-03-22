@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="interview-view">
     <el-alert
       v-if="displayError"
@@ -10,7 +10,7 @@
 
     <el-alert
       v-if="streamStoppedByUser"
-      title="Live output stopped. You can submit another answer to start a new round."
+      title="流式输出已停止，你可以继续提交下一轮回答。"
       type="warning"
       show-icon
       :closable="false"
@@ -18,8 +18,8 @@
     />
 
     <div class="interview-view__toolbar">
-      <el-button v-if="isStreaming" plain @click="stopStreaming">Stop Stream</el-button>
-      <el-button type="danger" plain :loading="finishing" @click="finishInterview">Finish Session</el-button>
+      <el-button v-if="isStreaming" plain @click="stopStreaming">停止输出</el-button>
+      <el-button type="danger" plain :loading="finishing" @click="finishInterview">结束会话</el-button>
     </div>
 
     <div class="interview-view__grid">

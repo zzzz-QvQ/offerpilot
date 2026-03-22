@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="settings-view">
     <el-row :gutter="16">
       <el-col :xs="24" :xl="12">
