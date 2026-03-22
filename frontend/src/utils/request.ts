@@ -16,6 +16,17 @@ const normalizeApiBaseURL = () => {
     : `${rawBaseURL.replace(/\/$/, '')}/api`;
 };
 
+const getStoredToken = () => {
+  const token = localStorage.getItem(STORAGE_KEYS.token);
+
+  if (!token || token === 'undefined' || token === 'null') {
+    localStorage.removeItem(STORAGE_KEYS.token);
+    return '';
+  }
+
+  return token;
+};
+
 const createRequestInstance = (): AxiosInstance => {
   const instance = axios.create({
     baseURL: normalizeApiBaseURL(),
@@ -24,7 +35,7 @@ const createRequestInstance = (): AxiosInstance => {
 
   instance.interceptors.request.use(
     (config) => {
-      const token = localStorage.getItem(STORAGE_KEYS.token);
+      const token = getStoredToken();
 
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -36,7 +47,7 @@ const createRequestInstance = (): AxiosInstance => {
   );
 
   instance.interceptors.response.use(
-    (response: AxiosResponse<ApiResponse>) => {
+    (response: AxiosResponse<ApiResponse<unknown>>) => {
       const payload = response.data;
 
       if (typeof payload?.code === 'number' && payload.code !== 0) {
@@ -51,6 +62,13 @@ const createRequestInstance = (): AxiosInstance => {
         ? String(error.response.data.message)
         : error.message || '网络异常，请稍后重试';
 
+      if (error.response?.status === 401) {
+        localStorage.removeItem(STORAGE_KEYS.token);
+        localStorage.removeItem(STORAGE_KEYS.user);
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
       ElMessage.error(message);
       return Promise.reject(error);
     },
@@ -62,16 +80,20 @@ const createRequestInstance = (): AxiosInstance => {
 export const request = createRequestInstance();
 
 export const http = {
-  get<T>(url: string, config?: AxiosRequestConfig) {
-    return request.get<ApiResponse<T>, ApiResponse<T>>(url, config);
+  async get<T>(url: string, config?: AxiosRequestConfig) {
+    const response = await request.get<ApiResponse<T>>(url, config);
+    return response.data as ApiResponse<T>;
   },
-  post<T>(url: string, data?: unknown, config?: AxiosRequestConfig) {
-    return request.post<ApiResponse<T>, ApiResponse<T>>(url, data, config);
+  async post<T>(url: string, data?: unknown, config?: AxiosRequestConfig) {
+    const response = await request.post<ApiResponse<T>>(url, data, config);
+    return response.data as ApiResponse<T>;
   },
-  put<T>(url: string, data?: unknown, config?: AxiosRequestConfig) {
-    return request.put<ApiResponse<T>, ApiResponse<T>>(url, data, config);
+  async put<T>(url: string, data?: unknown, config?: AxiosRequestConfig) {
+    const response = await request.put<ApiResponse<T>>(url, data, config);
+    return response.data as ApiResponse<T>;
   },
-  delete<T>(url: string, config?: AxiosRequestConfig) {
-    return request.delete<ApiResponse<T>, ApiResponse<T>>(url, config);
+  async delete<T>(url: string, config?: AxiosRequestConfig) {
+    const response = await request.delete<ApiResponse<T>>(url, config);
+    return response.data as ApiResponse<T>;
   },
 };

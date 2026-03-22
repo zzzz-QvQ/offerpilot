@@ -152,7 +152,7 @@ func (s *interviewService) CreateSession(userID uint64, req CreateInterviewSessi
 
 	firstQuestion, err := s.generateInitialQuestion(context.Background(), mode, jobRole)
 	if err != nil {
-		return nil, err
+		firstQuestion = s.buildFallbackInitialQuestion(mode, jobRole)
 	}
 
 	session := &model.InterviewSession{
@@ -180,6 +180,24 @@ func (s *interviewService) CreateSession(userID uint64, req CreateInterviewSessi
 	}
 
 	return &CreateInterviewSessionResponse{SessionID: strconv.FormatUint(session.ID, 10)}, nil
+}
+
+func (s *interviewService) buildFallbackInitialQuestion(mode, jobRole string) string {
+	mode = strings.TrimSpace(mode)
+	jobRole = strings.TrimSpace(jobRole)
+
+	if mode == "" {
+		mode = "general"
+	}
+	if jobRole == "" {
+		jobRole = "frontend engineer"
+	}
+
+	return fmt.Sprintf(
+		"我们先进行一轮 %s 模式的 %s 面试。请你先做一个 1 分钟左右的自我介绍，并结合一个你最熟悉的前端项目，说明你的技术选型、核心职责以及遇到的一个主要难点。",
+		mode,
+		jobRole,
+	)
 }
 
 func (s *interviewService) GetSessionDetail(userID, sessionID uint64) (*InterviewSessionDetail, error) {

@@ -1,0 +1,1 @@
+UPDATE users SET password_hash = '$2a$10$jX3XWbduJ3v9CXbWvAY4rO/9aPJJmhcK86uEI8yrmMPxR343AZ1MK' WHERE email = 'test@example.com';

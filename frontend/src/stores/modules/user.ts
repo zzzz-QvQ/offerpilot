@@ -1,9 +1,20 @@
-import { defineStore } from 'pinia';
+﻿import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import { authApi } from '@/api/auth';
 import { STORAGE_KEYS } from '@/constants/storage';
 import type { LoginParams, UserProfile } from '@/types/user';
+
+const readTokenFromStorage = () => {
+  const value = localStorage.getItem(STORAGE_KEYS.token);
+
+  if (!value || value === 'undefined' || value === 'null') {
+    localStorage.removeItem(STORAGE_KEYS.token);
+    return '';
+  }
+
+  return value;
+};
 
 const readUserFromStorage = (): UserProfile | null => {
   const raw = localStorage.getItem(STORAGE_KEYS.user);
@@ -21,7 +32,7 @@ const readUserFromStorage = (): UserProfile | null => {
 };
 
 export const useUserStore = defineStore('user', () => {
-  const token = ref<string>(localStorage.getItem(STORAGE_KEYS.token) ?? '');
+  const token = ref<string>(readTokenFromStorage());
   const userInfo = ref<UserProfile | null>(readUserFromStorage());
   const initializing = ref(false);
   const loggingOut = ref(false);

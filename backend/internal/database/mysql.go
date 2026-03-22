@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func NewMySQL(cfg config.Config) (*gorm.DB, error) {
@@ -28,5 +29,37 @@ func NewMySQL(cfg config.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	if err := ensureDemoUser(db); err != nil {
+		return nil, err
+	}
+
 	return db, nil
+}
+
+func ensureDemoUser(db *gorm.DB) error {
+	const (
+		email    = "test@example.com"
+		password = "password"
+		nickname = "Test User"
+	)
+
+	var existing model.User
+	err := db.Where("email = ?", email).First(&existing).Error
+	if err == nil {
+		return nil
+	}
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return err
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	return db.Create(&model.User{
+		Email:        email,
+		PasswordHash: string(passwordHash),
+		Nickname:     nickname,
+	}).Error
 }

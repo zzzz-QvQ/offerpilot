@@ -36,7 +36,7 @@ func (h *InterviewHandler) CreateSession(c *gin.Context) {
 
 	result, err := h.interviewService.CreateSession(userID, req)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, 50000, "failed to create interview session")
+		response.Error(c, http.StatusInternalServerError, 50000, "failed to create interview session: "+err.Error())
 		return
 	}
 

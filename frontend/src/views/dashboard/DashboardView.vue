@@ -1,11 +1,11 @@
-<template>
+﻿<template>
   <div class="dashboard-view">
     <el-alert
       v-if="dashboardStore.error"
       :title="dashboardStore.error"
       type="error"
       show-icon
-      closable="false"
+      :closable="false"
     />
 
     <el-skeleton v-if="dashboardStore.loading" :rows="10" animated />
@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, nextTick } from 'vue';
 
 import DashboardStatCard from '@/components/dashboard/DashboardStatCard.vue';
 import RecentSessionList from '@/components/dashboard/RecentSessionList.vue';
@@ -53,7 +53,9 @@ import { useDashboardStore } from '@/stores/modules/dashboard';
 
 const dashboardStore = useDashboardStore();
 
-onMounted(() => {
+onMounted(async () => {
+  await nextTick();
+
   if (!dashboardStore.loading && !dashboardStore.statCards.length && !dashboardStore.error) {
     void dashboardStore.fetchDashboardData();
   }

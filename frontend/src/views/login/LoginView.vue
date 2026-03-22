@@ -44,7 +44,7 @@
         </el-form-item>
 
         <el-form-item class="login-card__action">
-          <el-button type="primary" :loading="submitting" class="login-card__button" @click="handleSubmit">
+          <el-button type="primary" :loading="submitting" class="login-card__button" native-type="submit">
             登录
           </el-button>
         </el-form-item>
@@ -91,7 +91,6 @@ const handleSubmit = async () => {
   errorMessage.value = '';
 
   const valid = await formRef.value.validate().catch(() => false);
-
   if (!valid) {
     return;
   }
